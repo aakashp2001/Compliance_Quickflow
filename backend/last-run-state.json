@@ -1,0 +1,50 @@
+{
+  "savedAt": "2026-05-06T10:29:53.959Z",
+  "status": "completed-with-issues",
+  "flowState": {
+    "appName": "AUTO-APP-MOTW7A3W",
+    "siteName": "AUTO-SITE-MOTW7A3W",
+    "countryName": "India",
+    "timeZoneName": "India ( +05:30 )",
+    "templateName": "AUTO-TPL-MOTWXE23",
+    "subTemplateName": "",
+    "workflowName": "AUTO-WF-MOTWXE23"
+  },
+  "steps": {
+    "login": {
+      "status": "passed",
+      "message": "Login successful"
+    },
+    "createSite": {
+      "status": "skipped",
+      "message": "Skipped — resuming from createTemplate"
+    },
+    "createApp": {
+      "status": "skipped",
+      "message": "Skipped — resuming from createTemplate"
+    },
+    "createTemplate": {
+      "status": "passed",
+      "message": "Saved",
+      "templateName": "AUTO-TPL-MOTWXE23"
+    },
+    "createSubTemplate": {
+      "status": "failed",
+      "message": "[FORCE-SELECT] Could not find \"AUTO-TPL-MOTWXE23\" in any offcanvas dropdown. Is the record created and saved before this step?"
+    },
+    "assignWorkflow": {
+      "status": "passed",
+      "message": "Saved",
+      "wfName": "AUTO-WF-MOTWXE23"
+    },
+    "selectAppUnderSite": {
+      "status": "passed",
+      "message": "Navigated to https://ipdev.quickflow.in/Template-Workflow",
+      "url": "https://ipdev.quickflow.in/Template-Workflow"
+    },
+    "auditTrail": {
+      "status": "failed",
+      "message": "page.waitForTimeout: Target page, context or browser has been closed"
+    }
+  }
+}

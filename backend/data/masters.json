@@ -1,0 +1,2384 @@
+{
+  "masters": [
+    {
+      "name": "Operation",
+      "displayName": "Operation",
+      "href": "/Operation",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "vOperationCode17",
+          "displayName": "Operation Code",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "vOperationName18",
+          "displayName": "Operation Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "vOperationPath19",
+          "displayName": "Operation Path",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 1000,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "cOperationType20",
+          "displayName": "Operation Type",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 2,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "iParentOperationId21",
+          "displayName": "Parent Operation",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "iSeqNo22",
+          "displayName": "Seq No.",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 5,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "vTablesAffected23",
+          "displayName": "Table(s) affected",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "App_Id33623",
+          "displayName": "APP",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Parent Operation",
+          "APP"
+        ]
+      }
+    },
+    {
+      "name": "TimeZone",
+      "displayName": "TimeZone",
+      "href": "/TimeZone",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "CountryId38115",
+          "displayName": "Country Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "timeZoneName33639",
+          "displayName": "Time Zone Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 1000,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "UTCOffset33640",
+          "displayName": "UTC Offeset",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "timeZoneAbbrevation33641",
+          "displayName": "Time Zone Abbreviation",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "DstStartFromDate33642",
+          "displayName": "DST Start From",
+          "elementType": "date",
+          "disabled": false,
+          "required": false,
+          "maxLength": 20,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "DstEndToDate33643",
+          "displayName": "DST End To",
+          "elementType": "date",
+          "disabled": false,
+          "required": false,
+          "maxLength": 20,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "Description33644",
+          "displayName": "Description",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Country Name"
+        ]
+      }
+    },
+    {
+      "name": "Country",
+      "displayName": "Country",
+      "href": "/Country",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "countryName33567",
+          "displayName": "Country Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 400,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "countryCode33568",
+          "displayName": "Country Code",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 20,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Site",
+      "displayName": "Site",
+      "href": "/Site",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "CountryId33732",
+          "displayName": "Country Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "TimeZoneId33733",
+          "displayName": "Time Zone Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "vLocationName33608",
+          "displayName": "Site Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "vLocationCode33619",
+          "displayName": "Site Code",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 4,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "vAddress133609",
+          "displayName": "vAddress1",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "vAddress233610",
+          "displayName": "vAddress2",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "vRemarks33611",
+          "displayName": "vRemarks",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Country Name",
+          "Time Zone Name"
+        ]
+      }
+    },
+    {
+      "name": "Department",
+      "displayName": "Department",
+      "href": "/Department",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "vDeptName28689",
+          "displayName": "Department Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "vRemarks28690",
+          "displayName": "Remarks",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Role",
+      "displayName": "Role",
+      "href": "/Role",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "vUserTypeName28709",
+          "displayName": "Role",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "User",
+      "displayName": "User",
+      "href": "/User",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "vLoginName",
+          "displayName": "Username",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "vEmailId",
+          "displayName": "Email ID",
+          "elementType": "email",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "iLocationId",
+          "displayName": "Location",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "vEmpCode",
+          "displayName": "Employee Code",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 20,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "field_5",
+          "displayName": "Active Directory User",
+          "elementType": "checkbox",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "iDeptID",
+          "displayName": "Department",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "vFirstName",
+          "displayName": "First Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "vLastName",
+          "displayName": "Last Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 8,
+          "id": "iUserTypeId",
+          "displayName": "Role",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 9,
+          "id": "defaultApp",
+          "displayName": "Default App",
+          "elementType": "select",
+          "disabled": true,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 10,
+          "id": "vLoginPass",
+          "displayName": "Password",
+          "elementType": "password",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 11,
+          "id": "vConLoginPass",
+          "displayName": "Confirm Password",
+          "elementType": "password",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 12,
+          "id": "vPhoneNo",
+          "displayName": "Phone No.",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 13,
+          "id": "vRemark",
+          "displayName": "Remarks",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Location",
+          "Department",
+          "Role"
+        ]
+      }
+    },
+    {
+      "name": "Email-Scheduler",
+      "displayName": "Email Scheduler",
+      "href": "/Email-Scheduler",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "email-scheduler-name",
+          "displayName": "Schedule Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "email-scheduler-frequency",
+          "displayName": "Frequency",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "email-scheduler-app",
+          "displayName": "App",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "email-scheduler-data-objects",
+          "displayName": "Data Objects",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "email-scheduler-recipients",
+          "displayName": "Email Recipients",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "email-scheduler-cc",
+          "displayName": "CC",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "email-scheduler-bcc",
+          "displayName": "BCC",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "email-scheduler-subject",
+          "displayName": "Email Subject",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Frequency",
+          "App",
+          "Data Objects",
+          "Email Recipients",
+          "CC",
+          "BCC"
+        ]
+      }
+    },
+    {
+      "name": "Create-App",
+      "displayName": "Create App",
+      "href": "/Create-App",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "app_name5054",
+          "displayName": "App Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 30,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "appCode23319",
+          "displayName": "App Code",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 3,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "field_3",
+          "displayName": "Site",
+          "elementType": "checkbox",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "FormSubmitTo36385",
+          "displayName": "Form Submission To",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 1,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "remarks5056",
+          "displayName": "Remarks",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "appIconUrl35913",
+          "displayName": "App Icon",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Form Submission To"
+        ]
+      }
+    },
+    {
+      "name": "Create-Template",
+      "displayName": "Create Template",
+      "href": "/Create-Template",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "vName5800",
+          "displayName": "Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "vShortName5803",
+          "displayName": "Template Code",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 3,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "app_id5806",
+          "displayName": "App",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "vFormId5804",
+          "displayName": "System generated Record ID(Unique ID) called As",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "vDescription5805",
+          "displayName": "Description",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "IsQRCodeRequired5808",
+          "displayName": "QRCode Required?",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 5,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "prn_file_path5817",
+          "displayName": "PRN file",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "guid35867",
+          "displayName": "guid35867",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 36,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "App",
+          "QRCode Required?"
+        ]
+      }
+    },
+    {
+      "name": "Create-Sub-Templates",
+      "displayName": "Create Sub Templates",
+      "href": "/Create-Sub-Templates",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "TemplateSheetId5733",
+          "displayName": "Template",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 6,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "Name5734",
+          "displayName": "Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "TemplateType5735",
+          "displayName": "Template Type",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 8,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "SeqNo5738",
+          "displayName": "Sequence No.",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 10,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "Guid35866",
+          "displayName": "Guid35866",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 36,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Template",
+          "Template Type"
+        ]
+      }
+    },
+    {
+      "name": "Email-Template",
+      "displayName": "Email Template",
+      "href": "/Email-Template",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Extend-Template-to-Site",
+      "displayName": "Extend Template to Site",
+      "href": "/Extend-Template-to-Site",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "SourceSite36507",
+          "displayName": "Site",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "SourceApp36508",
+          "displayName": "App",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "DestinationSite36509",
+          "displayName": "Site",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "DestinationApp36510",
+          "displayName": "App",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "Template36511",
+          "displayName": "Template",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Site",
+          "App",
+          "Site",
+          "Template"
+        ]
+      }
+    },
+    {
+      "name": "Master-Workflow",
+      "displayName": "Master Workflow",
+      "href": "/Master-Workflow",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      },
+      "fieldFetchError": "page.waitForSelector: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.offcanvas.show, .offcanvas-body') to be visible\u001b[22m\n\u001b[2m    34 × locator resolved to hidden <div class=\"offcanvas-body px-4\">…</div>\u001b[22m\n"
+    },
+    {
+      "name": "Create-Panel",
+      "displayName": "Create Panel",
+      "href": "/Create-Panel",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "field_1",
+          "displayName": "Type",
+          "elementType": "radio",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "create-panel-folder",
+          "displayName": "Folder Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "create-panel-dashboard",
+          "displayName": "Dashboard",
+          "elementType": "select",
+          "disabled": true,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "create-panel-panel",
+          "displayName": "Panel Name",
+          "elementType": "select",
+          "disabled": true,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "create-panel-panel-size",
+          "displayName": "Panel Size",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "create-panel-tab",
+          "displayName": "Tab Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "create-panel-site",
+          "displayName": "Site Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "create-panel-app",
+          "displayName": "App Name",
+          "elementType": "select",
+          "disabled": true,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 8,
+          "id": "create-panel-role",
+          "displayName": "Role",
+          "elementType": "select",
+          "disabled": true,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Folder Name",
+          "Panel Size",
+          "Tab Name",
+          "Site Name"
+        ]
+      }
+    },
+    {
+      "name": "Create-Object",
+      "displayName": "Create Object",
+      "href": "/Create-Object",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "appID36519",
+          "displayName": "App Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "TemplateName25003",
+          "displayName": "Template Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "DynamicColumn25004",
+          "displayName": "Field Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "NameOfTable25006",
+          "displayName": "Table Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "ConditionalColumn25007",
+          "displayName": "Conditional Field Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "OperatorsName25008",
+          "displayName": "Operators",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "Value25009",
+          "displayName": "Conditional Value",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "insertInProgress36520",
+          "displayName": "Store data in table",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        },
+        {
+          "idx": 8,
+          "id": "guid39104",
+          "displayName": "guid39104",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 12,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "App Name",
+          "Template Name",
+          "Field Name",
+          "Conditional Field Name",
+          "Operators",
+          "Store data in table"
+        ]
+      }
+    },
+    {
+      "name": "Tab-Master",
+      "displayName": "Tab Master",
+      "href": "/Tab-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "TabName36446",
+          "displayName": "Tab Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "TabDescription36452",
+          "displayName": "Tab Description",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Archive",
+      "displayName": "Archive",
+      "href": "/Archive",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Option-Master",
+      "displayName": "Option Master",
+      "href": "/Option-Master",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      },
+      "fieldFetchError": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:visible, a:visible:not(.menu-link)').filter({ hasText: /^\\s*Create\\s*$/ }).first()\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" class=\"btn btn-sm btn-primary d-flex align-items-center\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    56 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    {
+      "name": "Workflow-Level-Master",
+      "displayName": "Workflow Level Master",
+      "href": "/Workflow-Level-Master",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      },
+      "fieldFetchError": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:visible, a:visible:not(.menu-link)').filter({ hasText: /^\\s*Create\\s*$/ }).first()\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" class=\"btn btn-sm btn-primary d-flex align-items-center\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    56 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    {
+      "name": "Frequency-Master",
+      "displayName": "Frequency Master",
+      "href": "/Frequency-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Frequency38651",
+          "displayName": "Frequency",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Block-Master",
+      "displayName": "Block Master",
+      "href": "/Block-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "BlockName38659",
+          "displayName": "Block Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Equipment-Name-Master",
+      "displayName": "Equipment Name Master",
+      "href": "/Equipment-Name-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "EquipmentName38667",
+          "displayName": "Equipment Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Equipment-Master",
+      "displayName": "Equipment Master",
+      "href": "/Equipment-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "EquipmentName38675",
+          "displayName": "Equipment Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "EquipmentId38676",
+          "displayName": "Equipment Id",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Equipment Name"
+        ]
+      }
+    },
+    {
+      "name": "Area-Name-Master",
+      "displayName": "Area Name Master",
+      "href": "/Area-Name-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "AreaName38684",
+          "displayName": "Area Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Area-Master",
+      "displayName": "Area Master",
+      "href": "/Area-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "AreaName38692",
+          "displayName": "Area Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "AreaId38693",
+          "displayName": "Area Id",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Area Name"
+        ]
+      }
+    },
+    {
+      "name": "Create-Task-Schedule",
+      "displayName": "Create Task Schedule",
+      "href": "/Create-Task-Schedule",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "TemplateId38701",
+          "displayName": "Name of the Log",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "TypeofLog38702",
+          "displayName": "Type of Log",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "FrequencyofRecurrence38703",
+          "displayName": "Frequency of Recurrence",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "Block38704",
+          "displayName": "Block",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "AreaName38710",
+          "displayName": "Area Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "AreaId38711",
+          "displayName": "Area Id",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "EquipmentorInstrumentName38712",
+          "displayName": "Equipment or Instrument Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "EquipmentorInstrumentId38713",
+          "displayName": "Equipment or Instrument Id",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 8,
+          "id": "ReminderBeforeDue38705",
+          "displayName": "Reminder Before Due (In Hrs)",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 9,
+          "id": "RequireQAApproval38707",
+          "displayName": "Require QA Approval",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 10,
+          "id": "LateEntryReason38706",
+          "displayName": "Late Entry Reason (In case of Task Overdue)",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 11,
+          "id": "GracePeriod38709",
+          "displayName": "Grace Period (In Hrs)",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 12,
+          "id": "BlockNextUsage38708",
+          "displayName": "Block Next Usage",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 13,
+          "id": "Remarks38720",
+          "displayName": "Remarks",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Name of the Log",
+          "Type of Log",
+          "Frequency of Recurrence",
+          "Block",
+          "Require QA Approval",
+          "Block Next Usage"
+        ]
+      }
+    },
+    {
+      "name": "Frequency-Mapping-Master",
+      "displayName": "Frequency Mapping Master",
+      "href": "/Frequency-Mapping-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "SiteName38825",
+          "displayName": "Site Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "FrequencyId38826",
+          "displayName": "Frequency",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "DurationInDays38827",
+          "displayName": "Duration In Days",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "StartTime38828",
+          "displayName": "Start Time",
+          "elementType": "time",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "DueDaysAfterOccurance39231",
+          "displayName": "Due Days After Occurance",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Site Name",
+          "Frequency"
+        ]
+      }
+    },
+    {
+      "name": "Instrument-mapping-Master",
+      "displayName": "Instrument mapping Master",
+      "href": "/Instrument-mapping-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "BlockName38881",
+          "displayName": "Block Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "InstrumentName38882",
+          "displayName": "Instrument Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "InstrumentId38883",
+          "displayName": "Instrument Id",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "ModelNo38884",
+          "displayName": "Model No",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "InstrumentMake38885",
+          "displayName": "Instrument Make",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "CalibrationFrequencyinDays38886",
+          "displayName": "Calibration Frequency in Days",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Block Name",
+          "Instrument Name",
+          "Instrument Id"
+        ]
+      }
+    },
+    {
+      "name": "Type-of-Cleaning-Master",
+      "displayName": "Type of Cleaning Master",
+      "href": "/Type-of-Cleaning-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "CleaningType38894",
+          "displayName": "Cleaning Type",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Disinfectant-solution-master",
+      "displayName": "Disinfectant solution master",
+      "href": "/Disinfectant-solution-master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Nameandconcentrationofdisinfecntsolution38902",
+          "displayName": "Name and concentration of disinfecnt solution",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Detergent-solution-master",
+      "displayName": "Detergent solution master",
+      "href": "/Detergent-solution-master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Nameandconcentrationofdetergentsolution38910",
+          "displayName": "Name and concentration of detergent solution",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Waste-generating-area-master",
+      "displayName": "Waste generating area master",
+      "href": "/Waste-generating-area-master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Department38918",
+          "displayName": "Department",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "wastegeneratingarea38919",
+          "displayName": "waste generating area",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Department"
+        ]
+      }
+    },
+    {
+      "name": "Shift-Master",
+      "displayName": "Shift Master",
+      "href": "/Shift-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ShiftName38927",
+          "displayName": "Shift Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "ShiftTime38928",
+          "displayName": "Shift Time",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Assign-User-to-Shift",
+      "displayName": "Assign User to Shift",
+      "href": "/Assign-User-to-Shift",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Shift38936",
+          "displayName": "Shift",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "Date38937",
+          "displayName": "Date",
+          "elementType": "date",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "Users38938",
+          "displayName": "Users",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Shift",
+          "Users"
+        ]
+      }
+    },
+    {
+      "name": "Activity-Master",
+      "displayName": "Activity Master",
+      "href": "/Activity-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ActivityName38955",
+          "displayName": "Activity Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Thermometer-Master",
+      "displayName": "Thermometer Master",
+      "href": "/Thermometer-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ThermometerIdNo38963",
+          "displayName": "Thermometer Id No",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Thermometer-Mapping-Master",
+      "displayName": "Thermometer Mapping Master",
+      "href": "/Thermometer-Mapping-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ThermometerIdNo38971",
+          "displayName": "Thermometer Id No",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "ThermometerCalibrationCertificateNo38972",
+          "displayName": "Thermometer  Calibration Certificate No",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "Calibrationdoneon38973",
+          "displayName": "Calibration done on",
+          "elementType": "date",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "NextCalibrationdueon38974",
+          "displayName": "Next Calibration due on ",
+          "elementType": "date",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Thermometer Id No"
+        ]
+      }
+    },
+    {
+      "name": "Cleaning-Agent-Concentration-Master",
+      "displayName": "Cleaning Agent Concentration Master",
+      "href": "/Cleaning-Agent-Concentration-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Concentration38982",
+          "displayName": "Concentration",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "SOP-Master",
+      "displayName": "SOP Master",
+      "href": "/SOP-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "SOPName38990",
+          "displayName": "SOP Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Product-Master",
+      "displayName": "Product Master",
+      "href": "/Product-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ProductName38998",
+          "displayName": "Product Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "MCQ-Master",
+      "displayName": "MCQ Master",
+      "href": "/MCQ-Master",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "TrainingTopic40414",
+          "displayName": "Training Topic",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "Question40400",
+          "displayName": "Question",
+          "elementType": "textarea",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "OptionA40401",
+          "displayName": "Option A",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "OptionB40402",
+          "displayName": "Option B",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "OptionC40403",
+          "displayName": "Option C",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "OptionD40404",
+          "displayName": "Option D",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "OptionE40405",
+          "displayName": "Option E",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "OptionF40406",
+          "displayName": "Option F",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 8,
+          "id": "Answers40407",
+          "displayName": "Answers",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Training Topic",
+          "Answers"
+        ]
+      }
+    },
+    {
+      "name": "Instrument",
+      "displayName": "Instrument",
+      "href": "/Instrument",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Instrument-Tag",
+      "displayName": "Instrument Tag",
+      "href": "/Instrument-Tag",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Rpa-Machine-Settings",
+      "displayName": "Rpa Machine Settings",
+      "href": "/Rpa-Machine-Settings",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "MachineName40345",
+          "displayName": "Machine Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "MachineType40346",
+          "displayName": "Machine Type",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "InvokeType40347",
+          "displayName": "Invoke Type",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "IsRpaProcessNeverClosed40348",
+          "displayName": "Is Rpa Process Never Closed",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 4,
+          "id": "IsRpaExecuteConfirmationRequired40349",
+          "displayName": "Is Rpa Execute Confirmation Required",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 5,
+          "id": "IsRpaDisplayMessageRequired40350",
+          "displayName": "Is Rpa Display Message Required",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 6,
+          "id": "NumberOfRpaRequestExecute40351",
+          "displayName": "Number Of Rpa Request Execute",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 7,
+          "id": "IntervalToCheckDisplayLoginPage40352",
+          "displayName": "Interval To Check Display Login Page",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 8,
+          "id": "IntervalToCheckProcess40353",
+          "displayName": "Interval To Check Process ",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Machine Type",
+          "Invoke Type",
+          "Is Rpa Process Never Closed",
+          "Is Rpa Execute Confirmation Required",
+          "Is Rpa Display Message Required"
+        ]
+      }
+    },
+    {
+      "name": "Instrument-Account-Level-Mapping",
+      "displayName": "Instrument Account Level Mapping",
+      "href": "/Instrument-Account-Level-Mapping",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Site25903",
+          "displayName": "Site",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "InstrumentName28864",
+          "displayName": "Instrument Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "Accountaccesslevel25904",
+          "displayName": "Account access level",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Site",
+          "Instrument Name"
+        ]
+      }
+    },
+    {
+      "name": "Action-Type",
+      "displayName": "Action Type",
+      "href": "/Action-Type",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ActionType26035",
+          "displayName": "Action Type",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "WorkflowName36219",
+          "displayName": "Workflow Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Workflow Name"
+        ]
+      }
+    },
+    {
+      "name": "License-Management",
+      "displayName": "License Management",
+      "href": "/License-Management",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "SiteId40478",
+          "displayName": "Site",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "ResourceId40479",
+          "displayName": "Resource",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "AccessLevelId40480",
+          "displayName": "Access Level",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 3,
+          "id": "Numberoflicenses40481",
+          "displayName": "Number of licenses",
+          "elementType": "number",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Site",
+          "Resource",
+          "Access Level"
+        ]
+      }
+    }
+  ],
+  "fetchedAt": "2026-05-06T11:54:29.186Z"
+}

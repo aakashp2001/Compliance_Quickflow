@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Environment
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Package
+package.json
+package-lock.json
+
+test-reports
+
+# Last-run template workflow flow mirror (written by backend)
+.template-workflow-flow.json

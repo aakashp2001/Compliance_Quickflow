@@ -1,0 +1,98 @@
+{
+  "User": {
+    "parentDropdowns": [
+      "Location"
+    ],
+    "dependentDropdowns": [
+      "Default App"
+    ]
+  },
+  "Email-Scheduler": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Frequency",
+      "App",
+      "Data Objects",
+      "Email Recipients",
+      "CC",
+      "BCC"
+    ]
+  },
+  "Site": {
+    "parentDropdowns": [
+      "Country Name"
+    ],
+    "dependentDropdowns": [
+      "Time Zone Name"
+    ]
+  },
+  "Equipment-Name-Master": {
+    "parentDropdowns": [],
+    "dependentDropdowns": []
+  },
+  "Instrument-Tag": {
+    "parentDropdowns": [],
+    "dependentDropdowns": []
+  },
+  "Operation": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Parent Operation",
+      "APP"
+    ]
+  },
+  "App-Access-Control": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "User Role",
+      "App"
+    ]
+  },
+  "TimeZone": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Country Name"
+    ]
+  },
+  "Create-App": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Form Submission To"
+    ]
+  },
+  "Create-Template": {
+    "parentDropdowns": [
+      "Site"
+    ],
+    "dependentDropdowns": [
+      "App",
+      "QRCode Required?"
+    ]
+  },
+  "System-Access-Control": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Frequency",
+      "App",
+      "Data Objects",
+      "Email Recipients",
+      "CC",
+      "BCC"
+    ]
+  },
+  "Extend-Template-to-Site": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Site",
+      "App",
+      "Template"
+    ]
+  },
+  "Create-Sub-Templates": {
+    "parentDropdowns": [],
+    "dependentDropdowns": [
+      "Template",
+      "Template Type"
+    ]
+  }
+}

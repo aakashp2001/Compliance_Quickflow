@@ -1,0 +1,687 @@
+{
+  "results": [
+    {
+      "id": 1777470829588,
+      "status": "fail",
+      "master": "Site",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "7:23:49 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "7:30:50 pm"
+    },
+    {
+      "id": 1777470472116,
+      "status": "fail",
+      "master": "Site",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "7:17:52 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "7:22:16 pm"
+    },
+    {
+      "id": 1777361254021,
+      "status": "pass",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "12:57:34 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": false,
+          "auditPassed": false,
+          "skipped": false
+        }
+      ],
+      "finishedAt": "12:59:06 pm"
+    },
+    {
+      "id": 1777361251116,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "12:57:31 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Request failed with status 500",
+      "finishedAt": "12:57:31 pm"
+    },
+    {
+      "id": 1777360645251,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "12:47:25 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:52:42 pm"
+    },
+    {
+      "id": 1777360175579,
+      "status": "pass",
+      "master": "Create-Template",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "12:39:35 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": false,
+          "auditPassed": false,
+          "skipped": false
+        }
+      ],
+      "finishedAt": "12:41:37 pm"
+    },
+    {
+      "id": 1777359588814,
+      "status": "fail",
+      "master": "Create-Template",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "12:29:48 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:31:18 pm"
+    },
+    {
+      "id": 1777295100408,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "6:35:00 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "6:41:38 pm"
+    },
+    {
+      "id": 1777291158740,
+      "status": "fail",
+      "master": "Email-Scheduler",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "5:29:18 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "5:30:41 pm"
+    },
+    {
+      "id": 1777290658544,
+      "status": "fail",
+      "master": "Master-Workflow",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "5:20:58 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "5:22:06 pm"
+    },
+    {
+      "id": 1777290150153,
+      "status": "fail",
+      "master": "Email-Scheduler",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "5:12:30 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "5:15:28 pm"
+    },
+    {
+      "id": 1777289746200,
+      "status": "fail",
+      "master": "Email-Scheduler",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "5:05:46 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "5:11:09 pm"
+    },
+    {
+      "id": 1777289665826,
+      "status": "fail",
+      "master": "Archive",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "5:04:25 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "5:05:32 pm"
+    },
+    {
+      "id": 1777286735664,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:15:35 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:17:44 pm"
+    },
+    {
+      "id": 1777286111663,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:05:11 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:11:07 pm"
+    },
+    {
+      "id": 1777286067747,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:04:27 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Request failed with status 500",
+      "finishedAt": "4:04:27 pm"
+    },
+    {
+      "id": 1777286066599,
+      "status": "fail",
+      "master": "Create-Sub-Templates",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:04:26 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Request failed with status 500",
+      "finishedAt": "4:04:26 pm"
+    },
+    {
+      "id": 1777285977936,
+      "status": "fail",
+      "master": "Archive",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:02:57 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Request failed with status 500",
+      "finishedAt": "4:03:57 pm"
+    },
+    {
+      "id": 1777281549009,
+      "status": "fail",
+      "master": "Archive",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:49:09 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "2:49:54 pm"
+    },
+    {
+      "id": 1777274966410,
+      "status": "fail",
+      "master": "Archive",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:59:26 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "1:00:17 pm"
+    },
+    {
+      "id": 1777274685172,
+      "status": "fail",
+      "master": "Archive",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:54:45 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:55:24 pm"
+    },
+    {
+      "id": 1777274652040,
+      "status": "fail",
+      "master": "Archive",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:54:12 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Request failed with status 500",
+      "finishedAt": "12:54:12 pm"
+    },
+    {
+      "id": 1777273583595,
+      "status": "pass",
+      "master": "Frequency-Master",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:36:23 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "12:38:17 pm"
+    },
+    {
+      "id": 1777270830948,
+      "status": "pass",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:50:30 am",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "11:53:17 am"
+    },
+    {
+      "id": 1776833720511,
+      "status": "pass",
+      "master": "Frequency-Master",
+      "operation": "create",
+      "startedAt": "10:25:20 am",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "skipped": false
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "10:27:13 am"
+    },
+    {
+      "id": 1776772877729,
+      "status": "pass",
+      "master": "Frequency-Master",
+      "operation": "create",
+      "startedAt": "5:31:17 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "skipped": false
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "5:33:25 pm"
+    },
+    {
+      "id": 1776764084729,
+      "status": "pass",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "3:04:44 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "skipped": false
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "3:07:11 pm"
+    },
+    {
+      "id": 1776764021047,
+      "status": "fail",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "3:03:41 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:04:42 pm"
+    },
+    {
+      "id": 1776762113856,
+      "status": "pass",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "2:31:53 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "skip",
+          "auditFailed": false,
+          "skipped": true
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "2:34:07 pm"
+    },
+    {
+      "id": 1776757156436,
+      "status": "fail",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "1:09:16 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "1:10:47 pm"
+    },
+    {
+      "id": 1776757062357,
+      "status": "fail",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "1:07:42 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "1:09:14 pm"
+    },
+    {
+      "id": 1776755939630,
+      "status": "pass",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "12:48:59 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "skip",
+          "auditFailed": false,
+          "skipped": true
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "12:50:20 pm"
+    },
+    {
+      "id": 1776690530382,
+      "status": "fail",
+      "master": "Email-Scheduler",
+      "operation": "create",
+      "startedAt": "6:38:50 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "6:43:18 pm"
+    },
+    {
+      "id": 1776679446786,
+      "status": "pass",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "startedAt": "3:34:06 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "skip",
+          "auditFailed": false,
+          "skipped": true
+        },
+        {
+          "operation": "mandatory-check",
+          "status": "pass",
+          "message": "Mandatory validation detected required field checks"
+        },
+        {
+          "operation": "duplicate-check",
+          "status": "pass",
+          "message": "Duplicate entry was blocked successfully"
+        }
+      ],
+      "finishedAt": "3:35:45 pm"
+    },
+    {
+      "id": 1776408044978,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "startedAt": "12:10:44 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:14:28 pm"
+    }
+  ],
+  "savedAt": "2026-04-29T14:00:50.051Z"
+}
