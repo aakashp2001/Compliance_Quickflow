@@ -32,13 +32,11 @@ test.describe('Data Integrity Compliance Suite', () => {
     
     const createSaveBtn = await getActionableSaveButton(page);
     if (createSaveBtn) await createSaveBtn.click();
-    await clickOptionalYesConfirmation(page, 3500).catch(() => false);
     
-    const successToast = page.locator('.swal2-html-container');
-    await successToast.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    const toastText = await successToast.innerText().catch(() => '');
-    
-    await clickOptionalYesConfirmation(page, 2500).catch(() => false);
+    // const successToast = page.locator('.swal2-html-container');
+    // await successToast.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
+    // const toastText = await successToast.innerText().catch(() => '');
+
     
     // Extract row data from table to get Record ID and Performed On
     await page.waitForTimeout(2000);
@@ -92,7 +90,7 @@ test.describe('Data Integrity Compliance Suite', () => {
        await clickOptionalYesConfirmation(page, 3500).catch(() => false);
     }
     
-    await successToastLocator.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
+    // await successToastLocator.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
     await clickOptionalYesConfirmation(page, 2500).catch(() => false);
 
     // Verify Audit Trail for Update (Ensures User & Timestamp logged)

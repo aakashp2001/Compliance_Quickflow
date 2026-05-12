@@ -1,7 +1,34 @@
 import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import {
+  IconBrandLogo,
+  IconChevronCollapse,
+  IconChevronExpand,
+  IconCrud,
+  IconDuplicate,
+  IconMandatory,
+  IconRecording,
+  IconReport,
+  IconSearchDb,
+  IconWorkflow,
+  IconCompliance,
+} from './sidebarIcons';
 
-function Sidebar({ currentPage, onNavigate }) {
-  const [collapsed, setCollapsed] = useState(false);
+const BRAND_NAME = 'TestHive';
+
+const NAV_LINKS = [
+  { path: '/master-discovery', label: 'Master Discovery', Icon: IconSearchDb },
+  { path: '/crud-operations', label: 'CRUD Operations', Icon: IconCrud },
+  { path: '/template-workflow', label: 'Template Workflow', Icon: IconWorkflow },
+  { path: '/mandatory-fields', label: 'Mandatory Fields', Icon: IconMandatory },
+  { path: '/duplicate-check', label: 'Duplicate Check', Icon: IconDuplicate },
+  { path: '/compliance', label: 'Compliance Suite', Icon: IconCompliance },
+  { path: '/recordings', label: 'Recordings', Icon: IconRecording },
+  { path: '/test-report', label: 'Test Report', Icon: IconReport },
+];
+
+function Sidebar() {
+  const [collapsed, setCollapsed] = useState(true);
 
   const links = [
     { id: 'discovery', label: 'Master Discovery', icon: '🔍' },
@@ -15,27 +42,43 @@ function Sidebar({ currentPage, onNavigate }) {
   ];
 
   return (
-    <nav className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <nav className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`} aria-label="Main navigation">
       <div className="sidebar-header">
-        <span className="sidebar-brand">{collapsed ? 'QF' : 'TestHive'}</span>
-        <button className="sidebar-toggle" onClick={() => setCollapsed(!collapsed)}>
-          {collapsed ? '▶' : '◀'}
-        </button>
+        <div className="sidebar-brand-lockup" title={BRAND_NAME}>
+          <span className="sidebar-logo-mark">
+            <IconBrandLogo size={collapsed ? 26 : 30} />
+          </span>
+          {!collapsed && <span className="sidebar-wordmark">{BRAND_NAME}</span>}
+        </div>
       </div>
       <ul className="sidebar-links">
-        {links.map((link) => (
-          <li key={link.id}>
-            <button
-              className={`sidebar-link ${currentPage === link.id ? 'active' : ''}`}
-              onClick={() => onNavigate(link.id)}
-              title={link.label}
+        {NAV_LINKS.map(({ path, label, Icon }) => (
+          <li key={path}>
+            <NavLink
+              to={path}
+              end
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              title={label}
             >
-              <span className="sidebar-icon">{link.icon}</span>
-              {!collapsed && <span className="sidebar-label">{link.label}</span>}
-            </button>
+              <span className="sidebar-icon" aria-hidden>
+                <Icon />
+              </span>
+              {!collapsed && <span className="sidebar-label">{label}</span>}
+            </NavLink>
           </li>
         ))}
       </ul>
+      <div className="sidebar-footer">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+        >
+          {collapsed ? <IconChevronExpand /> : <IconChevronCollapse />}
+        </button>
+      </div>
     </nav>
   );
 }

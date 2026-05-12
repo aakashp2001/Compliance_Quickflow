@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { fetchMasters, getHealth, getMasterFields, getMasters, compareFieldMaster } from './api/client';
 import Sidebar from './Sidebar';
 import CrudPage from './CrudPage';
@@ -406,13 +407,13 @@ function DiscoveryPage({
               />
             </label>
 
-            <label>
+            <label className="checkbox-label">
               <input
                 type="checkbox"
                 checked={fetchConfig.showBrowser}
                 onChange={(e) => setFetchConfig((prev) => ({ ...prev, showBrowser: e.target.checked }))}
               />
-              Show Playwright browser while fetching
+              <span>Show Playwright browser while fetching</span>
             </label>
 
             <button type="button" onClick={handleFetchMasters} disabled={fetching}>
@@ -549,16 +550,16 @@ function DiscoveryPage({
               Field <strong>{selectedFieldObj.displayName}</strong> is a <em>{selectedFieldObj.elementType}</em>.{' '}
               {matchedTargetMaster
                 ? <>Auto-matched: <strong>{matchedTargetMaster.displayName}</strong> ({matchedTargetMaster.name})</>
-                : <span style={{ color: '#c47c00' }}>No auto-match found. Select a target master manually below.</span>}
+                : <span className="text-warn">No auto-match found. Select a target master manually below.</span>}
             </p>
 
-            <label style={{ display: 'block', marginTop: 8 }}>
+            <label className="label-block">
               Target Master{matchedTargetMaster ? ' (override auto-match)' : ' (required)'}
               <select
                 value={manualTargetMaster || (matchedTargetMaster?.name ?? '')}
                 onChange={(e) => setManualTargetMaster(e.target.value === (matchedTargetMaster?.name ?? '') ? '' : e.target.value)}
                 disabled={comparing || !masters.length}
-                style={{ marginTop: 4, width: '100%' }}
+                className="input-full"
               >
                 {matchedTargetMaster && (
                   <option value={matchedTargetMaster.name}>
@@ -577,9 +578,9 @@ function DiscoveryPage({
 
             <button
               type="button"
+              className="btn-mt"
               onClick={handleCompare}
               disabled={comparing || !effectiveTargetMaster}
-              style={{ marginTop: 8 }}
             >
               {comparing
                 ? 'Comparing...'
@@ -641,7 +642,6 @@ function DiscoveryPage({
 }
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('discovery');
   const [sharedMasters, setSharedMasters] = useState([]);
   const visibleMasters = useMemo(() => removeMasterWorkflow(sharedMasters), [sharedMasters]);
   const [sharedConfig] = useState({
@@ -666,36 +666,25 @@ function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+      <Sidebar />
       <main className="main-content">
-        <div style={{ display: currentPage === 'discovery' ? 'block' : 'none' }}>
-          <DiscoveryPage
-            masters={visibleMasters}
-            onMastersChange={setSharedMasters}
-            masterFieldsCache={masterFieldsCache}
-            setMasterFieldsCache={setMasterFieldsCache}
-          />
-        </div>
-        <div style={{ display: currentPage === 'crud' ? 'block' : 'none' }}>
-          <CrudPage masters={visibleMasters} />
-        </div>
-        <div style={{ display: currentPage === 'test-report' ? 'block' : 'none' }}>
-          <TestReportPage masters={visibleMasters} isVisible={currentPage === 'test-report'} />
-        </div>
-        <div style={{ display: currentPage === 'mandatory' ? 'block' : 'none' }}>
-          <MandatoryFieldsPage config={sharedConfig} masters={visibleMasters} />
-        </div>
-        <div style={{ display: currentPage === 'template-workflow' ? 'block' : 'none' }}>
-          <TemplateWorkflowPage />
-        </div>
-        <div style={{ display: currentPage === 'duplicate-check' ? 'block' : 'none' }}>
-          <DuplicateCheckPage masters={visibleMasters} />
-        </div>
-        <div style={{ display: currentPage === 'recordings' ? 'block' : 'none' }}>
-          <RecordingsPage masters={visibleMasters} isVisible={currentPage === 'recordings'} />
-        </div>
-        <div style={{ display: currentPage === 'compliance' ? 'block' : 'none' }}>
-          <CompliancePage masters={visibleMasters} />
+        <div className="main-inner">
+          <Routes>
+            <Route path="/" element={<Navigate to="/master-discovery" replace />} />
+            <Route path="/master-discovery" element={<DiscoveryPage masters={visibleMasters} onMastersChange={setSharedMasters}
+              masterFieldsCache={masterFieldsCache}
+              setMasterFieldsCache={setMasterFieldsCache} />} />
+
+
+            <Route path="/crud-operations" element={<CrudPage masters={visibleMasters} />} />
+            <Route path="/test-report" element={<TestReportPage masters={visibleMasters} />} />
+            <Route path="/mandatory-fields" element={<MandatoryFieldsPage config={sharedConfig} masters={visibleMasters} />} />
+            <Route path="/template-workflow" element={<TemplateWorkflowPage />} />
+            <Route path="/duplicate-check" element={<DuplicateCheckPage masters={visibleMasters} />} />
+            <Route path="/recordings" element={<RecordingsPage masters={visibleMasters} />} />
+            <Route path="/compliance" element={<CompliancePage masters={visibleMasters}/>} />
+            <Route path="*" element={<Navigate to="/master-discovery" replace />} />
+          </Routes>
         </div>
       </main>
     </div>

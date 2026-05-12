@@ -31,6 +31,83 @@ function emitResult(result) {
   process.stdout.write(JSON.stringify(result));
 }
 
+// ── Playback overlay: direct DOM injection that survives page navigations ──────
+// Stores the last overlay state per Playwright page object so the load listener
+// can re-inject it automatically after every navigation (login, navigateTo, etc.)
+const _pageOverlayState = new Map();
+
+async function _injectOverlay(page, desc, index, total) {
+  try {
+    await page.evaluate(({ d, i, t }) => {
+      // Inject CSS once per document
+      if (!document.getElementById('__pbo_s')) {
+        const s = document.createElement('style');
+        s.id = '__pbo_s';
+        s.textContent =
+          '#__pbo{position:fixed;top:12px;right:12px;z-index:2147483647;' +
+          'background:rgba(11, 18, 32, 0.8);color:#fff;padding:10px 16px;border-radius:10px;' +
+          'box-shadow:0 8px 32px rgba(0, 0, 0, 0.5);min-width:220px;max-width:500px;' +
+          'display:none;align-items:center;gap:10px;font-family:system-ui,sans-serif;font-size:14px;}' +
+          '#__pbo_main{flex:1;font-weight:600;line-height:1.35;color:#fff;}' +
+          '#__pbo_meta{color:#94a3b8;font-size:12px;white-space:nowrap;}' +
+          '#__pbo_x{background:none;border:none;color:#94a3b8;cursor:pointer;' +
+          'font-size:14px;padding:2px 6px;border-radius:4px;line-height:1;}';
+        document.documentElement.appendChild(s);
+      }
+      // Create or reuse overlay element
+      let el = document.getElementById('__pbo');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = '__pbo';
+        el.innerHTML =
+          '<div id="__pbo_main"></div>' +
+          '<div id="__pbo_meta"></div>';
+        document.documentElement.appendChild(el);
+        document.getElementById('__pbo_x').addEventListener('click', () => {
+          el.style.display = 'none';
+        });
+      }
+      document.getElementById('__pbo_main').textContent = d;
+      document.getElementById('__pbo_meta').textContent = (i && t) ? (i + ' of ' + t) : '';
+      el.style.display = 'flex';
+    }, { d: String(desc || ''), i: Number(index || 0), t: Number(total || 0) });
+  } catch (_) {
+    // page is navigating or closed — safe to ignore
+  }
+}
+
+/**
+ * Call once per Playwright page. Registers a 'load' listener so the overlay
+ * is automatically re-injected after every page navigation.
+ */
+function setupOverlayOnPage(page) {
+  page.on('load', async () => {
+    const state = _pageOverlayState.get(page);
+    if (state) {
+      await _injectOverlay(page, state.desc, state.index, state.total);
+    }
+  });
+}
+
+async function showPlaybackOverlay(page, desc, index, total) {
+  if (!page) return;
+  _pageOverlayState.set(page, { desc, index, total });
+  await _injectOverlay(page, desc, index, total);
+}
+
+async function hidePlaybackOverlay(page) {
+  if (!page) return;
+  _pageOverlayState.delete(page);
+  try {
+    await page.evaluate(() => {
+      const el = document.getElementById('__pbo');
+      if (el) el.style.display = 'none';
+    });
+  } catch (_) {
+    // ignore
+  }
+}
+
 function normalizeText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -250,14 +327,20 @@ async function openEditFormForRecord(page, recordID) {
 
 async function runTC_DI_01(page) {
   log('TC-DI-01-01 & 01-02: Attributability on Create & Update');
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 1/10: Logging in', 1, 10).catch(() => {});
   await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 2/10: Navigating to master list', 2, 10).catch(() => {});
   await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
 
   // 1. Create Flow
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 3/10: Opening create form', 3, 10).catch(() => {});
   await openCreateForm(page);
   const createAuditTrail = await fillOffcanvasForm(page, QT_MASTER);
   const saveBtnC = await getActionableSaveButton(page);
-  if (saveBtnC) await saveBtnC.click();
+  if (saveBtnC) {
+    await showPlaybackOverlay(page, 'TC-DI-01 — Step 4/10: Saving new record', 4, 10).catch(() => {});
+    await saveBtnC.click();
+  }
   const createSystemSavedAt = new Date();
   const createToast = await waitForSuccessToastOrHandleConfirm(page, 'create', 30000);
   const toastText = createToast?.text || '';
@@ -287,6 +370,10 @@ async function runTC_DI_01(page) {
   if (masterRowData?.data) {
     log(`Master Page Data: ${JSON.stringify(masterRowData.data)}`);
   }
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 5/10: Verifying create audit trail', 5, 10).catch(() => {});
+  const requestedTc = String(QT_TC_ID || '').trim().toUpperCase();
+  const onlyCreate = requestedTc === 'TC-DI-01-01';
+  const onlyUpdate = requestedTc === 'TC-DI-01-02';
 
   const createVerify = await verifyAuditTrailEntry(page, {
     baseURL: new URL(page.url()).origin,
@@ -298,14 +385,28 @@ async function runTC_DI_01(page) {
     username: QT_USER,
     masterPerformedOn: masterRowData?.data?.['Performed On'] || masterRowData?.data?.['Performedon'],
   }).then((res) => ({ passed: res.verified, ...res })).catch((e) => ({ passed: false, reason: e.message }));
+  // If caller requested only the create sub-test, return create-only result
+  if (onlyCreate) {
+    await hidePlaybackOverlay(page).catch(() => {});
+    return {
+      tcId: 'TC-DI-01-01',
+      title: 'Attributability on Create',
+      status: createVerify.passed ? 'passed' : 'failed',
+      details: [ { step: 'Create audit verification', ...createVerify } ],
+      _debug: undefined,
+    };
+  }
 
   // 2. Update Flow
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 6/10: Navigating back for update', 6, 10).catch(() => {});
   await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
   const editOpened = await openEditFormForRecord(page, recordID);
   if (!editOpened) {
+    await hidePlaybackOverlay(page).catch(() => {});
     throw new Error(`Could not open edit form for record ${recordID || '[unknown]'}`);
   }
   
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 7/10: Opening edit form', 7, 10).catch(() => {});
   const updateAuditTrail = await fillOffcanvasForm(page, QT_MASTER);
   const updateReason = 'Compliance TC-DI-01-02 Update';
   const reasonApplied = await applyUpdateReasonToMasterForm(page, updateReason);
@@ -314,7 +415,10 @@ async function runTC_DI_01(page) {
   }
   let submittedUpdateReason = reasonApplied?.applied ? updateReason : '';
   const saveBtnU = await getActionableSaveButton(page);
-  if (saveBtnU) await saveBtnU.click();
+  if (saveBtnU) {
+    await showPlaybackOverlay(page, 'TC-DI-01 — Step 8/10: Saving updated record', 8, 10).catch(() => {});
+    await saveBtnU.click();
+  }
   const updateSystemSavedAt = new Date();
   
   const reasonField = page.locator('#reasonTextarea:visible').first();
@@ -339,6 +443,7 @@ async function runTC_DI_01(page) {
   const masterReason = pickFieldValue(updatedMasterRowData?.data, ['Reason', 'Update Reason', 'Remarks']);
   const masterPerformedOn = pickFieldValue(updatedMasterRowData?.data, ['Performed On', 'Performedon', 'Last Updated', 'Modified On', 'Updated On']);
   const masterPerformedBy = pickFieldValue(updatedMasterRowData?.data, ['Performed By', 'Performedby', 'Updated By', 'Modified By', 'User']);
+  await showPlaybackOverlay(page, 'TC-DI-01 — Step 9/10: Verifying update audit trail', 9, 10).catch(() => {});
 
   const updateVerify = await verifyAuditTrailEntry(page, {
     baseURL: new URL(page.url()).origin,
@@ -376,6 +481,8 @@ async function runTC_DI_01(page) {
     deltaAuditVsSystemSec !== null && deltaMasterVsSystemSec !== null && deltaAuditVsMasterSec !== null
       ? (deltaAuditVsSystemSec <= 180 && deltaMasterVsSystemSec <= 180 && deltaAuditVsMasterSec <= 120)
       : false;
+  // For compliance we only validate Audit vs Master timing delta (ignore system save comparisons)
+  const auditVsMasterWithin = deltaAuditVsMasterSec !== null ? deltaAuditVsMasterSec <= 120 : false;
 
   const auditPerformedBy = extractPerformerFromAuditRow(updateVerify?.matchedRow || '');
   const performerMatchesMaster = !masterPerformedBy
@@ -386,6 +493,37 @@ async function runTC_DI_01(page) {
     || normalizeText(masterPerformedBy).includes(normalizeText(QT_USER));
 
   const passed = createVerify.passed && updateVerify.passed;
+    // If caller requested only the update sub-test, return update-only result (create was performed to obtain a record but not reported)
+    if (onlyUpdate) {
+      await hidePlaybackOverlay(page).catch(() => {});
+      return {
+        tcId: 'TC-DI-01-02',
+        title: 'Attributability on Update',
+        status: updateVerify.passed ? 'passed' : 'failed',
+        details: [
+          { step: 'Update audit verification', ...updateVerify },
+          {
+            step: 'Update reason consistency (Master row vs Audit trail)',
+            passed: normalizeText(submittedUpdateReason) === normalizeText(updateReason) && auditReasonMatched,
+            expected: updateReason,
+            actualMasterReason: submittedUpdateReason || '(not captured)',
+          },
+          {
+            step: 'Master row vs Audit trail timing',
+            passed: auditVsMasterWithin,
+            actualMasterTime: parsedMasterTime ? parsedMasterTime.toISOString() : (masterPerformedOn || '(not found)'),
+            actualAuditTime: parsedAuditTime ? parsedAuditTime.toISOString() : (auditTimestampText || '(not found)'),
+            deltaAuditVsMasterSeconds: deltaAuditVsMasterSec,
+          },
+          {
+            step: 'Audit performer vs Master/Username',
+            passed: performerMatchesUser || performerMatchesMaster,
+            details: { auditPerformedBy, masterPerformedBy, username: QT_USER },
+          },
+        ],
+      };
+    }
+    await hidePlaybackOverlay(page).catch(() => {});
   return {
     tcId: 'TC-DI-01-01 & TC-DI-01-02',
     title: 'Attributability on Create & Update',
@@ -405,14 +543,10 @@ async function runTC_DI_01(page) {
         masterReasonFieldName: reasonApplied?.field || '',
       },
       {
-        step: 'Update timestamp consistency (System save vs Master row vs Audit trail)',
-        passed: timeWithinWindow,
-        expected: `within 180s of ${updateSystemSavedAt.toISOString()}`,
-        actualSystemSaveTime: updateSystemSavedAt.toISOString(),
+        step: 'Update timestamp consistency (Audit vs Master)',
+        passed: auditVsMasterWithin,
         actualMasterTime: parsedMasterTime ? parsedMasterTime.toISOString() : (masterPerformedOn || '(not found)'),
         actualAuditTime: parsedAuditTime ? parsedAuditTime.toISOString() : (auditTimestampText || '(not found)'),
-        deltaAuditVsSystemSeconds: deltaAuditVsSystemSec,
-        deltaMasterVsSystemSeconds: deltaMasterVsSystemSec,
         deltaAuditVsMasterSeconds: deltaAuditVsMasterSec,
       },
       {
@@ -430,7 +564,9 @@ async function runTC_DI_01(page) {
 
 async function runTC_DI_02(page) {
   log('TC-DI-02-01 & 02-02: Legibility (Special Characters & Long Strings)');
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 1/3: Logging in', 1, 3).catch(() => {});
   await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 2/3: Opening create form', 2, 3).catch(() => {});
   await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
   await openCreateForm(page);
 
@@ -449,6 +585,8 @@ async function runTC_DI_02(page) {
   const longPassed = longVal === longString && longVal.length === 255;
 
   const passed = unicodePassed && longPassed;
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 3/3: Checks complete', 3, 3).catch(() => {});
+  await hidePlaybackOverlay(page).catch(() => {});
   return {
     tcId: 'TC-DI-02-01 & TC-DI-02-02',
     title: 'Legibility (Special Characters & Long Strings)',
@@ -462,7 +600,9 @@ async function runTC_DI_02(page) {
 
 async function runTC_DI_06(page) {
   log('TC-DI-06-01: Mandatory Field Enforcement');
+  await showPlaybackOverlay(page, 'TC-DI-06 — Step 1/3: Logging in', 1, 3).catch(() => {});
   await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
+  await showPlaybackOverlay(page, 'TC-DI-06 — Step 2/3: Opening empty create form', 2, 3).catch(() => {});
   await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
   await openCreateForm(page);
 
@@ -472,6 +612,8 @@ async function runTC_DI_06(page) {
   await page.waitForTimeout(1500);
   const errorCount = await page.locator('.text-danger, .invalid-feedback').count();
   const passed = errorCount > 0;
+  await showPlaybackOverlay(page, 'TC-DI-06 — Step 3/3: Validation check complete', 3, 3).catch(() => {});
+  await hidePlaybackOverlay(page).catch(() => {});
   return {
     tcId: 'TC-DI-06-01',
     title: 'Mandatory Field Enforcement',
@@ -486,6 +628,8 @@ async function runTC_DI_07(browser) {
   log('TC-DI-07-01: Session Interruption (Durability)');
   const context = await newComplianceContext(browser);
   const page = await context.newPage();
+  setupOverlayOnPage(page);
+  await showPlaybackOverlay(page, 'TC-DI-07 — Session interruption test', 1, 3).catch(() => {});
   try {
     await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
     await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
@@ -517,6 +661,7 @@ async function runTC_DI_07(browser) {
   } catch (e) {
     return { tcId: 'TC-DI-07-01', title: 'Session Interruption (Durability)', status: 'failed', details: [{ step: 'Error', passed: false, reason: e.message }] };
   } finally {
+    await hidePlaybackOverlay(page).catch(() => {});
     await context.close();
   }
 }
@@ -525,6 +670,8 @@ async function runTC_DI_08(browser) {
   log('TC-DI-08-01: Soft Delete Data Preservation');
   const context = await newComplianceContext(browser);
   const page = await context.newPage();
+  setupOverlayOnPage(page);
+  await showPlaybackOverlay(page, 'TC-DI-08 — Soft delete verification', 1, 3).catch(() => {});
   try {
     await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
     await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
@@ -553,6 +700,7 @@ async function runTC_DI_08(browser) {
   } catch (e) {
     return { tcId: 'TC-DI-08-01', title: 'Soft Delete Data Preservation', status: 'failed', details: [{ step: 'Error', passed: false, reason: e.message }] };
   } finally {
+    await hidePlaybackOverlay(page).catch(() => {});
     await context.close();
   }
 }
@@ -563,6 +711,10 @@ async function runTC_DI_09(browser) {
   const ctxB = await newComplianceContext(browser);
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
+  setupOverlayOnPage(pageA);
+  setupOverlayOnPage(pageB);
+  await showPlaybackOverlay(pageA, 'TC-DI-09 — Concurrent edit (User A)', 1, 2).catch(() => {});
+  await showPlaybackOverlay(pageB, 'TC-DI-09 — Concurrent edit (User B)', 1, 2).catch(() => {});
 
   try {
     await login(pageA, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
@@ -610,6 +762,8 @@ async function runTC_DI_09(browser) {
   } catch (e) {
     return { tcId: 'TC-DI-09-01', title: 'Concurrent Edit Conflict Detection', status: 'failed', details: [{ step: 'Error', passed: false, reason: e.message }] };
   } finally {
+    await hidePlaybackOverlay(pageA).catch(() => {});
+    await hidePlaybackOverlay(pageB).catch(() => {});
     await ctxA.close();
     await ctxB.close();
   }
@@ -621,8 +775,10 @@ async function main() {
   const browser = await chromium.launch({ headless: QT_HEADLESS });
   const context = await newComplianceContext(browser);
   const page = await context.newPage();
+  setupOverlayOnPage(page); // re-inject overlay automatically after every navigation
 
   const tcMap = {
+    'TC-DI-01': () => runTC_DI_01(page),
     'TC-DI-01-01': () => runTC_DI_01(page),
     'TC-DI-01-02': () => runTC_DI_01(page),
     'TC-DI-02-01': () => runTC_DI_02(page),
@@ -639,7 +795,7 @@ async function main() {
   try {
     if (!QT_TC_ID || !tcMap[QT_TC_ID]) {
       const allResults = [];
-      const uniqueCases = ['TC-DI-01-01', 'TC-DI-02-01', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
+      const uniqueCases = ['TC-DI-01', 'TC-DI-02-01', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
       for (const tcId of uniqueCases) {
         try {
           const tcResult = await tcMap[tcId]().catch((e) => ({

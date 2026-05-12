@@ -1205,12 +1205,22 @@
       "displayName": "Workflow Level Master",
       "href": "/Workflow-Level-Master",
       "hasReview": false,
-      "fields": [],
+      "fields": [
+        {
+          "idx": 0,
+          "id": "WorkflowName36144",
+          "displayName": "Workflow Name",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 200,
+          "options": []
+        }
+      ],
       "detectedDependencies": {
         "parentDropdowns": [],
         "dependentDropdowns": []
-      },
-      "fieldFetchError": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:visible, a:visible:not(.menu-link)').filter({ hasText: /^\\s*Create\\s*$/ }).first()\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" class=\"btn btn-sm btn-primary d-flex align-items-center\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    56 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+      }
     },
     {
       "name": "Frequency-Master",
@@ -2115,28 +2125,6 @@
       }
     },
     {
-      "name": "Instrument",
-      "displayName": "Instrument",
-      "href": "/Instrument",
-      "hasReview": false,
-      "fields": [],
-      "detectedDependencies": {
-        "parentDropdowns": [],
-        "dependentDropdowns": []
-      }
-    },
-    {
-      "name": "Instrument-Tag",
-      "displayName": "Instrument Tag",
-      "href": "/Instrument-Tag",
-      "hasReview": false,
-      "fields": [],
-      "detectedDependencies": {
-        "parentDropdowns": [],
-        "dependentDropdowns": []
-      }
-    },
-    {
       "name": "Rpa-Machine-Settings",
       "displayName": "Rpa Machine Settings",
       "href": "/Rpa-Machine-Settings",
@@ -2245,9 +2233,9 @@
       }
     },
     {
-      "name": "Instrument-Account-Level-Mapping",
-      "displayName": "Instrument Account Level Mapping",
-      "href": "/Instrument-Account-Level-Mapping",
+      "name": "Resource-Account-Level-Mapping",
+      "displayName": "Resource Account Level Mapping",
+      "href": "/Resource-Account-Level-Mapping",
       "hasReview": false,
       "fields": [
         {
@@ -2263,7 +2251,7 @@
         {
           "idx": 1,
           "id": "InstrumentName28864",
-          "displayName": "Instrument Name",
+          "displayName": "Resource Name",
           "elementType": "select",
           "disabled": false,
           "required": false,
@@ -2273,7 +2261,7 @@
         {
           "idx": 2,
           "id": "Accountaccesslevel25904",
-          "displayName": "Account access level",
+          "displayName": "Account Access evel",
           "elementType": "text",
           "disabled": false,
           "required": false,
@@ -2285,7 +2273,7 @@
         "parentDropdowns": [],
         "dependentDropdowns": [
           "Site",
-          "Instrument Name"
+          "Resource Name"
         ]
       }
     },
@@ -2378,7 +2366,19 @@
           "Access Level"
         ]
       }
+    },
+    {
+      "name": "Connector-Dataflows",
+      "displayName": "Connector Dataflows",
+      "href": "/Connector-Dataflows",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      },
+      "fieldFetchError": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:visible, a:visible:not(.menu-link)').filter({ hasText: /^\\s*Create\\s*$/ }).first() to be visible\u001b[22m\n"
     }
   ],
-  "fetchedAt": "2026-05-06T11:54:29.186Z"
+  "fetchedAt": "2026-05-11T09:28:12.839Z"
 }

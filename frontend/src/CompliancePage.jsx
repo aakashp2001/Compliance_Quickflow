@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { runComplianceTest } from './api/client';
+import { useState, useEffect } from 'react';
+import { runComplianceTest, getMasters } from './api/client';
+import MultiSelect from './components/MultiSelect';
 
 const TC_OPTIONS = [
   { id: '', label: 'Run ALL Compliance Tests' },
-  { id: 'TC-DI-01-01', label: 'TC-DI-01-01 — Attributability (Create)' },
-  { id: 'TC-DI-01-02', label: 'TC-DI-01-02 — Attributability (Update)' },
+  { id: 'TC-DI-01', label: 'TC-DI-01 — Attributability (Create & Update)' },
   { id: 'TC-DI-02-01', label: 'TC-DI-02-01 — Legibility (Unicode / Special Chars)' },
   { id: 'TC-DI-02-02', label: 'TC-DI-02-02 — Legibility (Long Strings / 255 chars)' },
   { id: 'TC-DI-06-01', label: 'TC-DI-06-01 — Mandatory Field Enforcement' },
@@ -136,14 +136,31 @@ export default function CompliancePage({ masters = [] }) {
   const [config, setConfig] = useState({
     loginUrl: 'https://ipdev.quickflow.in/login',
     username: 'aakash',
-    password: 'qwer1234',
+    password: 'admin@123',
     username2: '',
     password2: '',
-    masterName: 'Country',
-    tcId: '',
+    masterNames: [], // multi-select
+    tcIds: [], // multi-select test ids; empty === run ALL
     showBrowser: true,
   });
-
+  const [localMasters, setLocalMasters] = useState(Array.isArray(masters) && masters.length ? masters : []);
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      if (Array.isArray(localMasters) && localMasters.length) return;
+      try {
+        const data = await getMasters();
+        if (!mounted) return;
+        const list = Array.isArray(data?.masters) ? data.masters : [];
+        setLocalMasters(list);
+      } catch (e) {
+        // ignore fetch errors; UI will show text input fallback
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
+  const [progress, setProgress] = useState('');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -159,27 +176,66 @@ export default function CompliancePage({ masters = [] }) {
     setRunning(true);
     setResult(null);
     setError('');
+    setProgress('');
+
+    // Determine masters and tests to run
+    const mastersToRun = Array.isArray(config.masterNames) && config.masterNames.length ? config.masterNames : (availableMasters.map((m) => m.name).slice(0, 1) || []);
+    const testsSelected = Array.isArray(config.tcIds) ? config.tcIds : [];
+    const runAllTests = testsSelected.length === 0 || testsSelected.includes('');
+    const testsToRun = runAllTests ? [''] : testsSelected;
+
+    const aggregated = [];
+
     try {
-      const data = await runComplianceTest({
-        loginUrl: config.loginUrl,
-        username: config.username,
-        password: config.password,
-        username2: config.username2 || undefined,
-        password2: config.password2 || undefined,
-        masterName: config.masterName,
-        tcId: config.tcId,
-        showBrowser: config.showBrowser,
-      });
-      setResult(data);
+      for (let mi = 0; mi < mastersToRun.length; mi += 1) {
+        const masterName = mastersToRun[mi];
+        // Run all selected tests for this master
+        for (let ti = 0; ti < testsToRun.length; ti += 1) {
+          const tcRequested = testsToRun[ti];
+          setProgress(`Running ${tcRequested || 'ALL'} on ${masterName} (${mi + 1}/${mastersToRun.length}, test ${ti + 1}/${testsToRun.length})`);
+
+            try {
+            const data = await runComplianceTest({
+              loginUrl: config.loginUrl,
+              username: config.username,
+              password: config.password,
+              username2: config.username2 || undefined,
+              password2: config.password2 || undefined,
+              masterName,
+              tcId: tcRequested,
+              showBrowser: config.showBrowser,
+            });
+
+            // Attach metadata for UI grouping - treat TC-DI-01 as a combined create+update run
+            const toPush = data;
+            toPush.requestedTcId = tcRequested;
+            toPush.requestedMaster = masterName;
+            aggregated.push(toPush);
+          } catch (err) {
+            aggregated.push({ status: 'failed', tcId: tcRequested || 'all', masterName, error: err?.message || String(err) });
+          }
+        }
+      }
+
+      // Build a batch-style result object compatible with UI rendering
+      const total = aggregated.length;
+      const passed = aggregated.filter((r) => r?.status === 'passed').length;
+      const failed = total - passed;
+      const batchResult = { mode: 'batch', results: aggregated, summary: { total, passed, failed } };
+      setResult(batchResult);
     } catch (err) {
       setError(err?.message || 'Compliance run failed');
     } finally {
       setRunning(false);
+      setProgress('');
     }
   }
 
-  const masterOptions = masters.map((m) => m.name).sort();
-  const allResultsList = result?.mode === 'all' ? (result?.results || []) : (result ? [result] : []);
+  const availableMasters = Array.isArray(localMasters) && localMasters.length ? localMasters : masters;
+  const masterOptions = availableMasters.map((m) => m.name).sort();
+  const masterOptionObjs = masterOptions.map((m) => ({ value: m, label: m }));
+  const testOptionObjs = TC_OPTIONS.filter((tc) => tc.id).map((tc) => ({ value: tc.id, label: tc.label }));
+  const allResultsList = result?.mode === 'all' || result?.mode === 'batch' ? (result?.results || []) : (result ? [result] : []);
   const summary = result?.summary;
 
   return (
@@ -199,13 +255,20 @@ export default function CompliancePage({ masters = [] }) {
               <input className="input" value={config.loginUrl} onChange={handleChange('loginUrl')} />
             </div>
             <div className="form-group">
-              <label>Master Under Test</label>
+              <label>Master(s) Under Test</label>
               {masterOptions.length > 0 ? (
-                <select className="input" value={config.masterName} onChange={handleChange('masterName')}>
-                  {masterOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <MultiSelect
+                  options={masterOptionObjs}
+                  value={config.masterNames}
+                  onChange={(vals) => setConfig((p) => ({ ...p, masterNames: vals }))}
+                  placeholder="Select masters..."
+                  selectAll={true}
+                  id="masters-select"
+                  searchable={true}
+                  wrapTags={true}
+                />
               ) : (
-                <input className="input" value={config.masterName} onChange={handleChange('masterName')} placeholder="e.g. Country" />
+                <input className="input" value={(config.masterNames || []).join(', ')} onChange={(e) => setConfig((p) => ({ ...p, masterNames: [e.target.value] }))} placeholder="e.g. Country" />
               )}
             </div>
             <div className="form-group">
@@ -225,10 +288,18 @@ export default function CompliancePage({ masters = [] }) {
               <input className="input" type="password" value={config.password2} onChange={handleChange('password2')} placeholder="Same as primary if blank" />
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>Test Case to Run</label>
-              <select className="input" value={config.tcId} onChange={handleChange('tcId')}>
-                {TC_OPTIONS.map((tc) => <option key={tc.id} value={tc.id}>{tc.label}</option>)}
-              </select>
+              <label>Test Case(s) to Run</label>
+              <MultiSelect
+                options={testOptionObjs}
+                value={config.tcIds}
+                onChange={(vals) => setConfig((p) => ({ ...p, tcIds: vals }))}
+                placeholder="Select test cases..."
+                selectAll={true}
+                id="tc-select"
+                searchable={testOptionObjs.length > 6}
+                wrapTags={true}
+              />
+              <div style={{ color: '#6b7280', fontSize: '0.82rem', marginTop: '6px' }}>No selection = run ALL tests.</div>
             </div>
           </div>
 
@@ -241,10 +312,10 @@ export default function CompliancePage({ masters = [] }) {
               className="btn btn-primary"
               onClick={handleRun}
               disabled={running}
-              style={{ minWidth: '180px' }}
             >
-              {running ? '⏳ Running…' : config.tcId ? `▶ Run ${config.tcId}` : '▶ Run All Compliance Tests'}
+              {running ? '⏳ Running…' : (Array.isArray(config.tcIds) && config.tcIds.length ? `▶ Run ${config.tcIds.length} test(s)` : '▶ Run All Compliance Tests')}
             </button>
+            {progress && <div style={{ color: '#9ca3af', fontSize: '0.9rem' }}>{progress}</div>}
           </div>
         </article>
       </section>
@@ -253,7 +324,7 @@ export default function CompliancePage({ masters = [] }) {
       {summary && (
         <section className="grid">
           <article className="card card-wide" style={{ display: 'flex', gap: '28px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div><span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f3f4f6' }}>{summary.total}</span><div style={{ color: '#9ca3af', fontSize: '0.82rem' }}>Total</div></div>
+            <div><span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#6a6a6a' }}>{summary.total}</span><div style={{ color: '#9ca3af', fontSize: '0.82rem' }}>Total</div></div>
             <div><span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#4ade80' }}>{summary.passed}</span><div style={{ color: '#9ca3af', fontSize: '0.82rem' }}>Passed</div></div>
             <div><span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171' }}>{summary.failed}</span><div style={{ color: '#9ca3af', fontSize: '0.82rem' }}>Failed</div></div>
             <div style={{ marginLeft: 'auto' }}><StatusBadge status={summary.failed === 0 ? 'passed' : 'failed'} /></div>
@@ -272,7 +343,7 @@ export default function CompliancePage({ masters = [] }) {
       )}
 
       {/* All TC results */}
-      {allResultsList.length > 0 && result?.mode === 'all' && (
+      {allResultsList.length > 0 && (result?.mode === 'all' || result?.mode === 'batch') && (
         <section className="grid">
           <article className="card card-wide">
             <h3 style={{ marginBottom: '14px' }}>Test Results</h3>

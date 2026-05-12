@@ -16,7 +16,7 @@ const STEP_LABELS = {
 };
 
 const STATUS_ICON  = { passed: '✅', failed: '❌', skipped: '⏭', pending: '○', running: '⏳' };
-const STATUS_COLOR = { passed: '#22c55e', failed: '#ef4444', skipped: '#f59e0b', pending: '#6b7280', running: '#3b82f6' };
+const STATUS_COLOR = { passed: '#16a34a', failed: '#dc2626', skipped: '#ca8a04', pending: '#64748b', running: '#2563eb' };
 
 /** First step that is failed or pending — that is where we resume */
 function findResumeStep(steps) {
@@ -30,22 +30,22 @@ function findResumeStep(steps) {
 function StepRow({ stepKey, stepData, isCurrent }) {
   const status = isCurrent ? 'running' : (stepData?.status || 'pending');
   return (
-    <li style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid #1e293b' }}>
-      <span style={{ fontSize: 18, minWidth: 24, color: STATUS_COLOR[status] || '#6b7280' }}>
+    <li className="tw-step-row">
+      <span className="tw-step-icon" style={{ color: STATUS_COLOR[status] || '#64748b' }}>
         {STATUS_ICON[status] || '○'}
       </span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 500, color: '#e2e8f0' }}>{STEP_LABELS[stepKey]}</div>
+      <div className="tw-step-body">
+        <div className="tw-step-title">{STEP_LABELS[stepKey]}</div>
         {stepData?.message && (
-          <div style={{ fontSize: 12, color: status === 'failed' ? '#f87171' : '#94a3b8', marginTop: 2 }}>
+          <div className={`tw-step-msg ${status === 'failed' ? 'tw-step-msg--fail' : ''}`}>
             {stepData.message}
           </div>
         )}
-        {stepData?.siteName        && <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>Site: {stepData.siteName}</div>}
-        {stepData?.appName         && <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>App: {stepData.appName}</div>}
-        {stepData?.templateName    && <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>Template: {stepData.templateName}</div>}
-        {stepData?.subTemplateName && <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>Sub-Template: {stepData.subTemplateName}</div>}
-        {stepData?.wfName          && <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>Workflow: {stepData.wfName}</div>}
+        {stepData?.siteName        && <div className="tw-step-meta">Site: {stepData.siteName}</div>}
+        {stepData?.appName         && <div className="tw-step-meta">App: {stepData.appName}</div>}
+        {stepData?.templateName    && <div className="tw-step-meta">Template: {stepData.templateName}</div>}
+        {stepData?.subTemplateName && <div className="tw-step-meta">Sub-Template: {stepData.subTemplateName}</div>}
+        {stepData?.wfName          && <div className="tw-step-meta">Workflow: {stepData.wfName}</div>}
       </div>
     </li>
   );
@@ -110,7 +110,7 @@ export default function TemplateWorkflowPage() {
       {/* Steps */}
       <article className="card card-wide">
         <h2>Workflow Steps</h2>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul className="tw-step-list">
           {STEP_ORDER.map(key => (
             <StepRow key={key} stepKey={key} stepData={steps?.[key]} isCurrent={running && !steps} />
           ))}
@@ -121,7 +121,7 @@ export default function TemplateWorkflowPage() {
       <article className="card card-wide">
         <h2>Run Controls</h2>
 
-        <label className="config-label" style={{ marginBottom: 20 }}>
+        <label className="config-label tw-config-label">
           <input
             type="checkbox"
             checked={showBrowser}
@@ -131,15 +131,14 @@ export default function TemplateWorkflowPage() {
           Show Browser (headed mode)
         </label>
 
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="tw-actions">
 
           {/* Run Full */}
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary tw-btn-run"
             onClick={() => execute()}
             disabled={running}
-            style={{ minWidth: 210 }}
           >
             {running ? '⏳ Running...' : '▶ Run Full Workflow'}
           </button>
@@ -148,20 +147,9 @@ export default function TemplateWorkflowPage() {
           {canResume && (
             <button
               type="button"
+              className="btn-resume"
               onClick={() => execute({ resumeFromStep: resumeStep, flowState: lastRun.flowState })}
               disabled={running}
-              style={{
-                minWidth: 210,
-                padding: '10px 20px',
-                borderRadius: 8,
-                border: '2px solid #f59e0b',
-                background: '#1c1400',
-                color: '#fbbf24',
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: running ? 'not-allowed' : 'pointer',
-                opacity: running ? 0.5 : 1,
-              }}
             >
               ⏩ Resume from Step {STEP_ORDER.indexOf(resumeStep) + 1}
             </button>
@@ -170,11 +158,11 @@ export default function TemplateWorkflowPage() {
 
         {/* Resume info — small pill below buttons */}
         {canResume && !running && (
-          <div style={{ marginTop: 12, padding: '8px 12px', background: '#0c1e0c', border: '1px solid #166534', borderRadius: 6, fontSize: 12, color: '#86efac' }}>
+          <div className="tw-resume-banner">
             Will resume from: <strong>{STEP_LABELS[resumeStep]}</strong>
-            {lastRun.flowState.siteName     && <span style={{ marginLeft: 12, color: '#6ee7b7' }}>Site: {lastRun.flowState.siteName}</span>}
-            {lastRun.flowState.appName      && <span style={{ marginLeft: 8, color: '#6ee7b7' }}>App: {lastRun.flowState.appName}</span>}
-            {lastRun.flowState.templateName && <span style={{ marginLeft: 8, color: '#6ee7b7' }}>Template: {lastRun.flowState.templateName}</span>}
+            {lastRun.flowState.siteName     && <span className="tw-resume-meta">Site: {lastRun.flowState.siteName}</span>}
+            {lastRun.flowState.appName      && <span className="tw-resume-meta">App: {lastRun.flowState.appName}</span>}
+            {lastRun.flowState.templateName && <span className="tw-resume-meta">Template: {lastRun.flowState.templateName}</span>}
           </div>
         )}
       </article>
@@ -197,19 +185,19 @@ export default function TemplateWorkflowPage() {
               : '❌ FAILED'}
           </div>
           {result?.jsonResult?.resumedFrom && (
-            <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 6 }}>
+            <div className="tw-resumed-note">
               ⏩ Resumed from: <strong>{STEP_LABELS[result.jsonResult.resumedFrom] || result.jsonResult.resumedFrom}</strong>
             </div>
           )}
-          <p style={{ color: '#94a3b8', marginTop: 8 }}>{result.message}</p>
+          <p className="tw-result-message">{result.message}</p>
           {flowState && (
-            <div style={{ marginTop: 12, padding: 12, background: '#0f172a', borderRadius: 8, fontSize: 13 }}>
-              <div style={{ fontWeight: 600, color: '#60a5fa', marginBottom: 6 }}>📋 Data From This Run</div>
-              {flowState.siteName        && <div style={{ color: '#e2e8f0' }}>📍 Site: <strong>{flowState.siteName}</strong></div>}
-              {flowState.appName         && <div style={{ color: '#e2e8f0', marginTop: 4 }}>🅰 App: <strong>{flowState.appName}</strong></div>}
-              {flowState.templateName    && <div style={{ color: '#e2e8f0', marginTop: 4 }}>📄 Template: <strong>{flowState.templateName}</strong></div>}
-              {flowState.subTemplateName && <div style={{ color: '#e2e8f0', marginTop: 4 }}>📄 Sub-Template: <strong>{flowState.subTemplateName}</strong></div>}
-              {flowState.workflowName    && <div style={{ color: '#e2e8f0', marginTop: 4 }}>⚙️ Workflow: <strong>{flowState.workflowName}</strong></div>}
+            <div className="tw-flow-panel">
+              <div className="tw-flow-panel-title">Data from this run</div>
+              {flowState.siteName        && <div className="tw-flow-line">Site: <strong>{flowState.siteName}</strong></div>}
+              {flowState.appName         && <div className="tw-flow-line">App: <strong>{flowState.appName}</strong></div>}
+              {flowState.templateName    && <div className="tw-flow-line">Template: <strong>{flowState.templateName}</strong></div>}
+              {flowState.subTemplateName && <div className="tw-flow-line">Sub-Template: <strong>{flowState.subTemplateName}</strong></div>}
+              {flowState.workflowName    && <div className="tw-flow-line">Workflow: <strong>{flowState.workflowName}</strong></div>}
             </div>
           )}
         </article>
@@ -218,9 +206,9 @@ export default function TemplateWorkflowPage() {
       {/* Logs */}
       {logs && (
         <article className="card card-wide">
-          <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 className="tw-logs-heading">
             Logs
-            <button type="button" onClick={() => setShowLogs(v => !v)} style={{ fontSize: 12, padding: '4px 10px' }}>
+            <button type="button" className="btn-ghost-sm" onClick={() => setShowLogs(v => !v)}>
               {showLogs ? 'Hide' : 'Show'}
             </button>
           </h2>

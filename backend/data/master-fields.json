@@ -1,6 +1,6 @@
 {
   "Operation": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -85,7 +85,7 @@
     ]
   },
   "TimeZone": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -160,7 +160,7 @@
     ]
   },
   "Country": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -185,7 +185,7 @@
     ]
   },
   "Site": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -260,7 +260,7 @@
     ]
   },
   "Department": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -285,7 +285,7 @@
     ]
   },
   "Role": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -300,7 +300,7 @@
     ]
   },
   "User": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -445,7 +445,7 @@
     ]
   },
   "Email-Scheduler": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -530,7 +530,7 @@
     ]
   },
   "Create-App": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -595,7 +595,7 @@
     ]
   },
   "Create-Template": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -680,7 +680,7 @@
     ]
   },
   "Create-Sub-Templates": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -735,11 +735,11 @@
     ]
   },
   "Email-Template": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": []
   },
   "Extend-Template-to-Site": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -794,11 +794,11 @@
     ]
   },
   "Master-Workflow": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": []
   },
   "Create-Panel": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -893,7 +893,7 @@
     ]
   },
   "Create-Object": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -988,7 +988,7 @@
     ]
   },
   "Tab-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1013,19 +1013,30 @@
     ]
   },
   "Archive": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": []
   },
   "Option-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": []
   },
   "Workflow-Level-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
-    "fields": []
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fields": [
+      {
+        "idx": 0,
+        "id": "WorkflowName36144",
+        "displayName": "Workflow Name",
+        "elementType": "text",
+        "disabled": false,
+        "required": false,
+        "maxLength": 200,
+        "options": []
+      }
+    ]
   },
   "Frequency-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1040,7 +1051,7 @@
     ]
   },
   "Block-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1055,7 +1066,7 @@
     ]
   },
   "Equipment-Name-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1070,7 +1081,7 @@
     ]
   },
   "Equipment-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1095,7 +1106,7 @@
     ]
   },
   "Area-Name-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1110,7 +1121,7 @@
     ]
   },
   "Area-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1135,7 +1146,7 @@
     ]
   },
   "Create-Task-Schedule": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1280,7 +1291,7 @@
     ]
   },
   "Frequency-Mapping-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1335,7 +1346,7 @@
     ]
   },
   "Instrument-mapping-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1400,7 +1411,7 @@
     ]
   },
   "Type-of-Cleaning-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1415,7 +1426,7 @@
     ]
   },
   "Disinfectant-solution-master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1430,7 +1441,7 @@
     ]
   },
   "Detergent-solution-master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1445,7 +1456,7 @@
     ]
   },
   "Shift-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1470,7 +1481,7 @@
     ]
   },
   "Assign-User-to-Shift": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1505,7 +1516,7 @@
     ]
   },
   "Activity-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1520,7 +1531,7 @@
     ]
   },
   "Thermometer-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1535,7 +1546,7 @@
     ]
   },
   "Thermometer-Mapping-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1580,7 +1591,7 @@
     ]
   },
   "Cleaning-Agent-Concentration-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1595,7 +1606,7 @@
     ]
   },
   "Product-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1610,7 +1621,7 @@
     ]
   },
   "MCQ-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1713,7 +1724,7 @@
     "fields": []
   },
   "Rpa-Machine-Settings": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1843,7 +1854,7 @@
     ]
   },
   "Action-Type": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1868,7 +1879,7 @@
     ]
   },
   "License-Management": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1913,7 +1924,7 @@
     ]
   },
   "Waste-generating-area-master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1938,7 +1949,7 @@
     ]
   },
   "SOP-Master": {
-    "fetchedAt": "2026-05-06T11:54:29.186Z",
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
     "fields": [
       {
         "idx": 0,
@@ -1951,5 +1962,44 @@
         "options": []
       }
     ]
+  },
+  "Resource-Account-Level-Mapping": {
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fields": [
+      {
+        "idx": 0,
+        "id": "Site25903",
+        "displayName": "Site",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 1,
+        "id": "InstrumentName28864",
+        "displayName": "Resource Name",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 50,
+        "options": []
+      },
+      {
+        "idx": 2,
+        "id": "Accountaccesslevel25904",
+        "displayName": "Account Access evel",
+        "elementType": "text",
+        "disabled": false,
+        "required": false,
+        "maxLength": 100,
+        "options": []
+      }
+    ]
+  },
+  "Connector-Dataflows": {
+    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fields": []
   }
 }

@@ -26,7 +26,7 @@ function randomTime() {
 }
 
 function randomText(length = 8) {
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
@@ -47,7 +47,7 @@ function defaultTextByField(fieldInfo, fallback = 'QA Entry') {
   if (/pin|zip|postal/.test(label)) return '380015';
   if (/email/.test(label)) return `qa${stamp}@pharmatest.in`;
   if (/phone|mobile|contact/.test(label)) return `9${String(100000000 + Math.floor(Math.random() * 899999999)).padStart(9, '0')}`;
-  if (/code|short/.test(label)) return `QF${stamp}`;
+  if (/code|short/.test(label)) return `${randomText(2)}${stamp}`;
   if (/remark|note|comment|description|detail|summary|instruction/.test(label)) {
     return 'Created for QA workflow validation.';
   }

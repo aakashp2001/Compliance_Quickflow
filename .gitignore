@@ -43,4 +43,3 @@ test-reports/
 # Optional caches
 .cache/
 *.tsbuildinfo
-.kilo
