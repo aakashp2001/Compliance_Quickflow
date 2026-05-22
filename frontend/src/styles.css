@@ -366,6 +366,50 @@ button:disabled {
   text-decoration: underline;
 }
 
+.test-report-search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0.45rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.test-report-search-field {
+  min-width: 240px;
+  flex: 1;
+  gap: 0.35rem;
+}
+
+.test-report-search-field > span {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.test-report-search-control {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.test-report-search-control input {
+  min-width: 0;
+  flex: 1;
+}
+
+.test-report-clear-search {
+  align-self: flex-end;
+}
+
+.test-report-filter-summary {
+  margin: 0.1rem 0 0.75rem;
+  font-size: 0.85rem;
+}
+
 .test-report-thumb {
   width: 140px;
   max-width: 100%;
@@ -399,7 +443,7 @@ button:disabled {
 }
 
 /* ── MultiSelect component ── */
-.multi-select-compliance { position: relative; font-size: 0.95rem; }
+.multi-select-compliance { position: relative; font-size: 0.95rem; width: 100%; }
 
 /* Trigger – the visible "input" box that shows tags */
 .ms-trigger {
@@ -477,9 +521,18 @@ button:disabled {
   align-items: center;
   justify-content: center;
   opacity: 0.6;
-  transition: opacity 0.1s, background 0.1s;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
 }
-.ms-tag-remove:hover { opacity: 1; background: rgba(29, 78, 216, 0.15); }
+.ms-tag-remove:hover { opacity: 1; background: rgba(29, 78, 216, 0.15); color: #EEF2FF; }
+
+/* Compliance Suite selector: single-select look without remove/cross icon */
+.compliance-suite-single-select .ms-tag-remove {
+  display: none;
+}
+
+.compliance-suite-single-select .ms-tag {
+  padding-right: 10px;
+}
 
 /* Chevron arrow */
 .ms-chevron {
@@ -571,8 +624,8 @@ button:disabled {
   word-break: break-word;
 }
 
-.test-report-testcases-col,
-.test-report-testcases-cell {
+.test-report-teststeps -col,
+.test-report-teststeps -cell {
   width: 280px;
   min-width: 260px;
 }
@@ -2016,6 +2069,13 @@ body.page-test-report .main-inner {
   flex: 1 1 180px;
 }
 
+.crud-master-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 220px;
+}
+
 .form-row label input,
 .form-row label select {
   margin-top: 0.35rem;
@@ -2064,6 +2124,11 @@ body.page-test-report .main-inner {
 
 .btn-sm:hover {
   background: rgba(0, 0, 0, 0.05);
+  color: #fff
+}
+
+.btn-sm:hover:disabled {
+  color: var(--text);
 }
 
 .status-error {
@@ -2469,6 +2534,7 @@ body.page-test-report .main-inner {
 .btn-download-report:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
+  color: white;
 }
 
 .recording-audit-badge {

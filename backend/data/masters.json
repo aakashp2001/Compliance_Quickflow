@@ -1193,12 +1193,24 @@
       "displayName": "Option Master",
       "href": "/Option-Master",
       "hasReview": false,
-      "fields": [],
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Drodpown28582",
+          "displayName": "Drodpown",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        }
+      ],
       "detectedDependencies": {
         "parentDropdowns": [],
-        "dependentDropdowns": []
-      },
-      "fieldFetchError": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:visible, a:visible:not(.menu-link)').filter({ hasText: /^\\s*Create\\s*$/ }).first()\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" class=\"btn btn-sm btn-primary d-flex align-items-center\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    56 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"swal2-container swal2-center swal2-backdrop-show\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+        "dependentDropdowns": [
+          "Drodpown"
+        ]
+      }
     },
     {
       "name": "Workflow-Level-Master",
@@ -1779,38 +1791,6 @@
       }
     },
     {
-      "name": "Shift-Master",
-      "displayName": "Shift Master",
-      "href": "/Shift-Master",
-      "hasReview": false,
-      "fields": [
-        {
-          "idx": 0,
-          "id": "ShiftName38927",
-          "displayName": "Shift Name",
-          "elementType": "text",
-          "disabled": false,
-          "required": false,
-          "maxLength": 500,
-          "options": []
-        },
-        {
-          "idx": 1,
-          "id": "ShiftTime38928",
-          "displayName": "Shift Time",
-          "elementType": "text",
-          "disabled": false,
-          "required": false,
-          "maxLength": 500,
-          "options": []
-        }
-      ],
-      "detectedDependencies": {
-        "parentDropdowns": [],
-        "dependentDropdowns": []
-      }
-    },
-    {
       "name": "Assign-User-to-Shift",
       "displayName": "Assign User to Shift",
       "href": "/Assign-User-to-Shift",
@@ -2125,9 +2105,110 @@
       }
     },
     {
-      "name": "Rpa-Machine-Settings",
-      "displayName": "Rpa Machine Settings",
-      "href": "/Rpa-Machine-Settings",
+      "name": "Resource",
+      "displayName": "Resource",
+      "href": "/Resource",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Resource-Tag",
+      "displayName": "Resource Tag",
+      "href": "/Resource-Tag",
+      "hasReview": false,
+      "fields": [],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": []
+      }
+    },
+    {
+      "name": "Resource-Access-Mapping",
+      "displayName": "Resource Access Mapping",
+      "href": "/Resource-Access-Mapping",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "Site25903",
+          "displayName": "Site",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 0,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "InstrumentName28864",
+          "displayName": "Resource Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 50,
+          "options": []
+        },
+        {
+          "idx": 2,
+          "id": "Accountaccesslevel25904",
+          "displayName": "Account Access level",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Site",
+          "Resource Name"
+        ]
+      }
+    },
+    {
+      "name": "Action-Type",
+      "displayName": "Action Type",
+      "href": "/Action-Type",
+      "hasReview": false,
+      "fields": [
+        {
+          "idx": 0,
+          "id": "ActionType26035",
+          "displayName": "Action Type",
+          "elementType": "text",
+          "disabled": false,
+          "required": false,
+          "maxLength": 500,
+          "options": []
+        },
+        {
+          "idx": 1,
+          "id": "WorkflowName36219",
+          "displayName": "Workflow Name",
+          "elementType": "select",
+          "disabled": false,
+          "required": false,
+          "maxLength": 100,
+          "options": []
+        }
+      ],
+      "detectedDependencies": {
+        "parentDropdowns": [],
+        "dependentDropdowns": [
+          "Workflow Name"
+        ]
+      }
+    },
+    {
+      "name": "Machine-Settings",
+      "displayName": "Machine Settings",
+      "href": "/Machine-Settings",
       "hasReview": false,
       "fields": [
         {
@@ -2233,85 +2314,6 @@
       }
     },
     {
-      "name": "Resource-Account-Level-Mapping",
-      "displayName": "Resource Account Level Mapping",
-      "href": "/Resource-Account-Level-Mapping",
-      "hasReview": false,
-      "fields": [
-        {
-          "idx": 0,
-          "id": "Site25903",
-          "displayName": "Site",
-          "elementType": "select",
-          "disabled": false,
-          "required": false,
-          "maxLength": 0,
-          "options": []
-        },
-        {
-          "idx": 1,
-          "id": "InstrumentName28864",
-          "displayName": "Resource Name",
-          "elementType": "select",
-          "disabled": false,
-          "required": false,
-          "maxLength": 50,
-          "options": []
-        },
-        {
-          "idx": 2,
-          "id": "Accountaccesslevel25904",
-          "displayName": "Account Access evel",
-          "elementType": "text",
-          "disabled": false,
-          "required": false,
-          "maxLength": 100,
-          "options": []
-        }
-      ],
-      "detectedDependencies": {
-        "parentDropdowns": [],
-        "dependentDropdowns": [
-          "Site",
-          "Resource Name"
-        ]
-      }
-    },
-    {
-      "name": "Action-Type",
-      "displayName": "Action Type",
-      "href": "/Action-Type",
-      "hasReview": false,
-      "fields": [
-        {
-          "idx": 0,
-          "id": "ActionType26035",
-          "displayName": "Action Type",
-          "elementType": "text",
-          "disabled": false,
-          "required": false,
-          "maxLength": 500,
-          "options": []
-        },
-        {
-          "idx": 1,
-          "id": "WorkflowName36219",
-          "displayName": "Workflow Name",
-          "elementType": "select",
-          "disabled": false,
-          "required": false,
-          "maxLength": 100,
-          "options": []
-        }
-      ],
-      "detectedDependencies": {
-        "parentDropdowns": [],
-        "dependentDropdowns": [
-          "Workflow Name"
-        ]
-      }
-    },
-    {
       "name": "License-Management",
       "displayName": "License Management",
       "href": "/License-Management",
@@ -2380,5 +2382,5 @@
       "fieldFetchError": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:visible, a:visible:not(.menu-link)').filter({ hasText: /^\\s*Create\\s*$/ }).first() to be visible\u001b[22m\n"
     }
   ],
-  "fetchedAt": "2026-05-11T09:28:12.839Z"
+  "fetchedAt": "2026-05-19T10:09:59.456Z"
 }

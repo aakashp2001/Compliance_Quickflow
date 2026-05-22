@@ -39,6 +39,10 @@ build/
 coverage/
 .nyc_output/
 test-reports/
+compliance-runs.json
+auditTrail.merged.temp.js
+AT_implementation_plan.md
+Audit_Trail_Module_Gap_Analysis.md
 
 # Optional caches
 .cache/

@@ -252,7 +252,7 @@ async function isMasterPage(page, href, baseURL) {
           // Check visible text (innerText strips hidden elements like icon-only spans)
           const inner = (el.innerText || '').replace(/\s+/g, ' ').trim();
           if (/\bCreate\b/i.test(inner)) return true;
-          // Check full textContent (catches cases where innerText is empty due to CSS)
+          // Check full textContent (catches stepswhere innerText is empty due to CSS)
           const full = (el.textContent || '').replace(/\s+/g, ' ').trim();
           if (/\bCreate\b/i.test(full)) return true;
           // Check aria-label and title attributes (icon-only buttons)

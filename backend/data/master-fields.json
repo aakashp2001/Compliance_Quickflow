@@ -1,6 +1,6 @@
 {
   "Operation": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -85,7 +85,7 @@
     ]
   },
   "TimeZone": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -160,7 +160,7 @@
     ]
   },
   "Country": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -185,7 +185,7 @@
     ]
   },
   "Site": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -260,7 +260,7 @@
     ]
   },
   "Department": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -285,7 +285,7 @@
     ]
   },
   "Role": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -300,7 +300,7 @@
     ]
   },
   "User": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -445,7 +445,7 @@
     ]
   },
   "Email-Scheduler": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -530,7 +530,7 @@
     ]
   },
   "Create-App": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -595,7 +595,7 @@
     ]
   },
   "Create-Template": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -680,7 +680,7 @@
     ]
   },
   "Create-Sub-Templates": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -735,11 +735,11 @@
     ]
   },
   "Email-Template": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": []
   },
   "Extend-Template-to-Site": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -794,11 +794,11 @@
     ]
   },
   "Master-Workflow": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": []
   },
   "Create-Panel": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -893,7 +893,7 @@
     ]
   },
   "Create-Object": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -988,7 +988,7 @@
     ]
   },
   "Tab-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1013,15 +1013,26 @@
     ]
   },
   "Archive": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": []
   },
   "Option-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
-    "fields": []
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
+    "fields": [
+      {
+        "idx": 0,
+        "id": "Drodpown28582",
+        "displayName": "Drodpown",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      }
+    ]
   },
   "Workflow-Level-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1036,7 +1047,7 @@
     ]
   },
   "Frequency-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1051,7 +1062,7 @@
     ]
   },
   "Block-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1066,7 +1077,7 @@
     ]
   },
   "Equipment-Name-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1081,7 +1092,7 @@
     ]
   },
   "Equipment-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1106,7 +1117,7 @@
     ]
   },
   "Area-Name-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1121,7 +1132,7 @@
     ]
   },
   "Area-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1146,7 +1157,7 @@
     ]
   },
   "Create-Task-Schedule": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1291,7 +1302,7 @@
     ]
   },
   "Frequency-Mapping-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1346,7 +1357,7 @@
     ]
   },
   "Instrument-mapping-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1411,7 +1422,7 @@
     ]
   },
   "Type-of-Cleaning-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1426,7 +1437,7 @@
     ]
   },
   "Disinfectant-solution-master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1441,7 +1452,7 @@
     ]
   },
   "Detergent-solution-master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1481,7 +1492,7 @@
     ]
   },
   "Assign-User-to-Shift": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1516,7 +1527,7 @@
     ]
   },
   "Activity-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1531,7 +1542,7 @@
     ]
   },
   "Thermometer-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1546,7 +1557,7 @@
     ]
   },
   "Thermometer-Mapping-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1591,7 +1602,7 @@
     ]
   },
   "Cleaning-Agent-Concentration-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1606,7 +1617,7 @@
     ]
   },
   "Product-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1621,7 +1632,7 @@
     ]
   },
   "MCQ-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1854,7 +1865,7 @@
     ]
   },
   "Action-Type": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1879,7 +1890,7 @@
     ]
   },
   "License-Management": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1924,7 +1935,7 @@
     ]
   },
   "Waste-generating-area-master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1949,7 +1960,7 @@
     ]
   },
   "SOP-Master": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": [
       {
         "idx": 0,
@@ -1999,7 +2010,145 @@
     ]
   },
   "Connector-Dataflows": {
-    "fetchedAt": "2026-05-11T09:28:12.839Z",
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
     "fields": []
+  },
+  "Resource": {
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
+    "fields": []
+  },
+  "Resource-Tag": {
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
+    "fields": []
+  },
+  "Resource-Access-Mapping": {
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
+    "fields": [
+      {
+        "idx": 0,
+        "id": "Site25903",
+        "displayName": "Site",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 1,
+        "id": "InstrumentName28864",
+        "displayName": "Resource Name",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 50,
+        "options": []
+      },
+      {
+        "idx": 2,
+        "id": "Accountaccesslevel25904",
+        "displayName": "Account Access level",
+        "elementType": "text",
+        "disabled": false,
+        "required": false,
+        "maxLength": 100,
+        "options": []
+      }
+    ]
+  },
+  "Machine-Settings": {
+    "fetchedAt": "2026-05-19T10:09:59.456Z",
+    "fields": [
+      {
+        "idx": 0,
+        "id": "MachineName40345",
+        "displayName": "Machine Name",
+        "elementType": "text",
+        "disabled": false,
+        "required": false,
+        "maxLength": 200,
+        "options": []
+      },
+      {
+        "idx": 1,
+        "id": "MachineType40346",
+        "displayName": "Machine Type",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 2,
+        "id": "InvokeType40347",
+        "displayName": "Invoke Type",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 3,
+        "id": "IsRpaProcessNeverClosed40348",
+        "displayName": "Is Rpa Process Never Closed",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 4,
+        "id": "IsRpaExecuteConfirmationRequired40349",
+        "displayName": "Is Rpa Execute Confirmation Required",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 5,
+        "id": "IsRpaDisplayMessageRequired40350",
+        "displayName": "Is Rpa Display Message Required",
+        "elementType": "select",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 6,
+        "id": "NumberOfRpaRequestExecute40351",
+        "displayName": "Number Of Rpa Request Execute",
+        "elementType": "number",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 7,
+        "id": "IntervalToCheckDisplayLoginPage40352",
+        "displayName": "Interval To Check Display Login Page",
+        "elementType": "number",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      },
+      {
+        "idx": 8,
+        "id": "IntervalToCheckProcess40353",
+        "displayName": "Interval To Check Process ",
+        "elementType": "number",
+        "disabled": false,
+        "required": false,
+        "maxLength": 0,
+        "options": []
+      }
+    ]
   }
 }

@@ -24,10 +24,8 @@ const SEL = {
 const CFG = {
   loginUrl: process.env.QT_URL || 'https://ipdev.quickflow.in/login',
   username: process.env.QT_USER || 'dhruvi',
-  password: process.env.QT_PASS || '',
-  headless: String(process.env.HEADLESS || 'false').toLowerCase() === 'true',
-};
-
+    password: process.env.QT_PASS || '',
+}
 const BASE_ORIGIN = new URL(CFG.loginUrl).origin;
 
 function randomText(length) {

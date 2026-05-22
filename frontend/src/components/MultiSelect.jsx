@@ -51,6 +51,7 @@ export default function MultiSelect({
   ariaLabel,
   rootClassName = 'multi-select-compliance',
   wrapTags = false,
+  closeOnSelect = false,
 }) {
   const uidRef = useRef(id || `ms-${++_uid}`);
   const opts = normalizeOptions(options);
@@ -61,6 +62,12 @@ export default function MultiSelect({
 
   const containerRef = useRef(null);
   const searchRef = useRef(null);
+
+  function closeDropdown() {
+    setOpen(false);
+    setSearch('');
+    setHighlighted(-1);
+  }
 
   // Derive selected in original options order
   const incoming = Array.isArray(value) ? value : [];
@@ -76,8 +83,7 @@ export default function MultiSelect({
   useEffect(() => {
     function handler(e) {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-        setSearch('');
+        closeDropdown();
       }
     }
     document.addEventListener('mousedown', handler);
@@ -97,8 +103,9 @@ export default function MultiSelect({
   // Reset highlight when search changes
   useEffect(() => { setHighlighted(-1); }, [search]);
 
-  const showSelectAll = selectAll && opts.length > 0;
-  const filtered = search.trim()
+  const hasSearch = search.trim().length > 0;
+  const showSelectAll = selectAll && opts.length > 0 && !hasSearch;
+  const filtered = hasSearch
     ? opts.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()))
     : opts;
   const allSelected = opts.length > 0 && opts.every((o) => selectedSet.has(o.value));
@@ -115,6 +122,9 @@ export default function MultiSelect({
     const cur = new Set(incoming);
     if (cur.has(val)) cur.delete(val); else cur.add(val);
     emit(opts.filter((o) => cur.has(o.value)).map((o) => o.value));
+    if (closeOnSelect) {
+      closeDropdown();
+    }
   }
 
   function removeTag(val) {
@@ -132,7 +142,8 @@ export default function MultiSelect({
   function handleTriggerKeyDown(e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((v) => !v); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); }
-    else if (e.key === 'Escape') { setOpen(false); setSearch(''); }
+    else if (e.key === 'Escape') { closeDropdown(); }
+    else if (e.key === 'Tab') { closeDropdown(); }
   }
 
   function handleSearchKeyDown(e) {
@@ -151,15 +162,22 @@ export default function MultiSelect({
       const opt = filtered[highlighted - allCount];
       if (opt) toggleValue(opt.value);
     } else if (e.key === 'Escape') {
-      setOpen(false);
-      setSearch('');
+      closeDropdown();
+    } else if (e.key === 'Tab') {
+      closeDropdown();
     } else if (e.key === 'Backspace' && !search && selected.length > 0) {
       removeTag(selected[selected.length - 1]);
     }
   }
 
+  function handleContainerBlur(e) {
+    const nextFocused = e.relatedTarget;
+    if (containerRef.current && nextFocused && containerRef.current.contains(nextFocused)) return;
+    closeDropdown();
+  }
+
   return (
-    <div className={rootClassName} ref={containerRef}>
+    <div className={rootClassName} ref={containerRef} onBlur={handleContainerBlur}>
       {/* ── Trigger ── */}
       <div
         className={`ms-trigger${open ? ' ms-open' : ''}`}

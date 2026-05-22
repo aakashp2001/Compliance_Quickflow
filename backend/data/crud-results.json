@@ -1,6 +1,2399 @@
 {
   "results": [
     {
+      "id": 1778754079584,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:51:19 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail",
+          "auditFailed": true,
+          "auditRan": true,
+          "auditPassed": false,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "rawOperations": [
+        {
+          "operation": "create",
+          "recordName": "809",
+          "auditTrail": {
+            "App Name": "Quality Management App D867C39",
+            "App Code": "809",
+            "Form Submission To": "User",
+            "Remarks": "Reference standard for analytical testing D6953648",
+            "appIconUrl": "Quality Management App 8D473A7E617647C3"
+          },
+          "createdRecordDetails": {
+            "App Name": "Quality Management App D867C39",
+            "App Code": "809",
+            "Site": "Mumbai",
+            "Form Submission To": "User",
+            "Remarks": "Reference standard for analytical testing D6953648"
+          },
+          "alertMessage": "Saved successfully (API response succeeded)",
+          "fieldCount": 5,
+          "auditVerification": {
+            "verified": false,
+            "source": "multi-row",
+            "detailOpened": false,
+            "queryUsed": "809",
+            "matchedRow": "AM-00000139 App Code - 809 - Created Dhruvi Shah 14-May-2026 15:50",
+            "matched": [
+              "master:Create App",
+              "operation:create",
+              "identifier:809",
+              "timestamp:friendly",
+              "field:App Name"
+            ],
+            "missing": [],
+            "fieldMatches": [
+              "App Name",
+              "App Code"
+            ],
+            "comparison": {
+              "totalChecked": 5,
+              "matchCount": 1,
+              "mismatchCount": 4,
+              "matches": [
+                {
+                  "field": "App Code",
+                  "expected": "809",
+                  "actual": "809"
+                }
+              ],
+              "mismatches": [
+                {
+                  "field": "App Name",
+                  "expected": "Quality Management App D867C39",
+                  "actual": "Quality Management App 88090",
+                  "auditField": "App Name"
+                }
+              ],
+              "notFoundInAudit": [
+                {
+                  "field": "Site",
+                  "expected": "Mumbai"
+                },
+                {
+                  "field": "Form Submission To",
+                  "expected": "User"
+                },
+                {
+                  "field": "Remarks",
+                  "expected": "Reference standard for analytical testing D6953648"
+                }
+              ],
+              "auditFieldCount": 3,
+              "passed": false,
+              "fieldValidationResults": [
+                {
+                  "fieldName": "App Name",
+                  "status": "MISMATCH",
+                  "expected": "Quality Management App D867C39",
+                  "actual": "Quality Management App 88090",
+                  "auditFieldName": "App Name",
+                  "error": "Expected \"Quality Management App D867C39\" but found \"Quality Management App 88090\""
+                },
+                {
+                  "fieldName": "App Code",
+                  "status": "PASS",
+                  "expected": "809",
+                  "actual": "809",
+                  "auditFieldName": "App Code",
+                  "error": null
+                },
+                {
+                  "fieldName": "Site",
+                  "status": "NOT_FOUND",
+                  "expected": "Mumbai",
+                  "actual": null,
+                  "auditFieldName": null,
+                  "error": "Field not found in audit trail"
+                },
+                {
+                  "fieldName": "Form Submission To",
+                  "status": "NOT_FOUND",
+                  "expected": "User",
+                  "actual": null,
+                  "auditFieldName": null,
+                  "error": "Field not found in audit trail"
+                },
+                {
+                  "fieldName": "Remarks",
+                  "status": "NOT_FOUND",
+                  "expected": "Reference standard for analytical testing D6953648",
+                  "actual": null,
+                  "auditFieldName": null,
+                  "error": "Field not found in audit trail"
+                }
+              ],
+              "fieldValidationSummary": {
+                "passedFields": [
+                  "App Code"
+                ],
+                "failedFields": [
+                  "App Name"
+                ],
+                "missingFields": [
+                  "Site",
+                  "Form Submission To",
+                  "Remarks"
+                ]
+              }
+            },
+            "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-23-31-584Z-create-app-create-audit-mismatch.png",
+            "fieldByFieldResults": {
+              "results": [
+                {
+                  "fieldName": "App Name",
+                  "expected": "Quality Management App D867C39",
+                  "actual": "Quality Management App D867C39",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                },
+                {
+                  "fieldName": "App Code",
+                  "expected": "809",
+                  "actual": "809",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                },
+                {
+                  "fieldName": "Site",
+                  "expected": "Mumbai",
+                  "actual": null,
+                  "recordIDMatch": false,
+                  "status": "FAIL",
+                  "reason": "No row with New Value = \"Mumbai\" and Field Name = \"Site\""
+                },
+                {
+                  "fieldName": "Form Submission To",
+                  "expected": "User",
+                  "actual": "User",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "expected": "Reference standard for analytical testing D6953648",
+                  "actual": "Reference standard for analytical testing D6953648",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                }
+              ],
+              "passed": false,
+              "summary": {
+                "passed": 4,
+                "failed": 1,
+                "errors": 0,
+                "total": 5
+              }
+            },
+            "fieldValidationResults": [
+              {
+                "fieldName": "App Name",
+                "expected": "Quality Management App D867C39",
+                "actual": "Quality Management App D867C39",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              },
+              {
+                "fieldName": "App Code",
+                "expected": "809",
+                "actual": "809",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              },
+              {
+                "fieldName": "Site",
+                "expected": "Mumbai",
+                "actual": null,
+                "recordIDMatch": false,
+                "status": "FAIL",
+                "reason": "No row with New Value = \"Mumbai\" and Field Name = \"Site\""
+              },
+              {
+                "fieldName": "Form Submission To",
+                "expected": "User",
+                "actual": "User",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              },
+              {
+                "fieldName": "Remarks",
+                "expected": "Reference standard for analytical testing D6953648",
+                "actual": "Reference standard for analytical testing D6953648",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              }
+            ],
+            "fieldValidationSummary": {
+              "total": 5,
+              "passed": 4,
+              "failed": 1,
+              "passedFields": [
+                "App Name",
+                "App Code",
+                "Form Submission To",
+                "Remarks"
+              ],
+              "failedFields": [
+                "Site"
+              ],
+              "missingFields": []
+            }
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-23-56-954Z-create-app-create-passed-operation-complete.png",
+          "auditRequired": true,
+          "auditFieldCount": 5,
+          "auditPassed": false
+        }
+      ],
+      "auditMismatches": [
+        {
+          "operation": "create",
+          "recordName": "809",
+          "reason": "Audit mismatch: 1 field checks failed",
+          "mismatches": [
+            {
+              "field": "App Name",
+              "expected": "Quality Management App D867C39",
+              "actual": "Quality Management App 88090",
+              "auditField": "App Name"
+            }
+          ],
+          "notFoundInAudit": [
+            {
+              "field": "Site",
+              "expected": "Mumbai"
+            },
+            {
+              "field": "Form Submission To",
+              "expected": "User"
+            },
+            {
+              "field": "Remarks",
+              "expected": "Reference standard for analytical testing D6953648"
+            }
+          ],
+          "matchCount": 1,
+          "mismatchCount": 4,
+          "fieldValidationResults": [
+            {
+              "fieldName": "App Name",
+              "expected": "Quality Management App D867C39",
+              "actual": "Quality Management App D867C39",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "App Code",
+              "expected": "809",
+              "actual": "809",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Site",
+              "expected": "Mumbai",
+              "actual": null,
+              "recordIDMatch": false,
+              "status": "FAIL",
+              "reason": "No row with New Value = \"Mumbai\" and Field Name = \"Site\""
+            },
+            {
+              "fieldName": "Form Submission To",
+              "expected": "User",
+              "actual": "User",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Remarks",
+              "expected": "Reference standard for analytical testing D6953648",
+              "actual": "Reference standard for analytical testing D6953648",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            }
+          ],
+          "createdRecordDetails": {
+            "App Name": "Quality Management App D867C39",
+            "App Code": "809",
+            "Site": "Mumbai",
+            "Form Submission To": "User",
+            "Remarks": "Reference standard for analytical testing D6953648"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-23-31-584Z-create-app-create-audit-mismatch.png"
+        },
+        {
+          "operation": "create",
+          "recordName": "809",
+          "reason": "Missing: ",
+          "fieldValidationResults": [
+            {
+              "fieldName": "App Name",
+              "expected": "Quality Management App D867C39",
+              "actual": "Quality Management App D867C39",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "App Code",
+              "expected": "809",
+              "actual": "809",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Site",
+              "expected": "Mumbai",
+              "actual": null,
+              "recordIDMatch": false,
+              "status": "FAIL",
+              "reason": "No row with New Value = \"Mumbai\" and Field Name = \"Site\""
+            },
+            {
+              "fieldName": "Form Submission To",
+              "expected": "User",
+              "actual": "User",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Remarks",
+              "expected": "Reference standard for analytical testing D6953648",
+              "actual": "Reference standard for analytical testing D6953648",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            }
+          ],
+          "createdRecordDetails": {
+            "App Name": "Quality Management App D867C39",
+            "App Code": "809",
+            "Site": "Mumbai",
+            "Form Submission To": "User",
+            "Remarks": "Reference standard for analytical testing D6953648"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-23-31-584Z-create-app-create-audit-mismatch.png"
+        }
+      ],
+      "finishedAt": "3:54:23 pm"
+    },
+    {
+      "id": 1778752843682,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:30:43 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "3:31:37 pm"
+    },
+    {
+      "id": 1778751775351,
+      "status": "fail",
+      "master": "Site",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:12:55 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:14:53 pm"
+    },
+    {
+      "id": 1778751757756,
+      "status": "fail",
+      "master": "Site",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:12:37 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "3:12:48 pm"
+    },
+    {
+      "id": 1778751532059,
+      "status": "pass",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:08:52 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "rawOperations": [
+        {
+          "operation": "create",
+          "recordName": "Regulatory Affairs",
+          "auditTrail": {
+            "Department Name": "Regulatory Affairs",
+            "Remarks": "Pharmaceutical product - Quality tested batch 9ABA9CBA"
+          },
+          "createdRecordDetails": {
+            "Department Name": "Regulatory Affairs",
+            "Remarks": "Pharmaceutical product - Quality tested batch 9ABA9CBA"
+          },
+          "alertMessage": "Saved successfully (API response succeeded)",
+          "fieldCount": 2,
+          "auditVerification": {
+            "verified": true,
+            "source": "multi-row",
+            "detailOpened": false,
+            "queryUsed": "DP-26-000084",
+            "matchedRow": "DP-26-000084 Department Name - Regulatory Affairs - Created Dhruvi Shah 14-May-2026 15:07",
+            "matched": [
+              "master:Department",
+              "operation:create",
+              "identifier:Regulatory Affairs",
+              "timestamp:friendly",
+              "field:Department Name"
+            ],
+            "missing": [],
+            "fieldMatches": [
+              "Department Name",
+              "Remarks"
+            ],
+            "comparison": {
+              "totalChecked": 2,
+              "matchCount": 2,
+              "mismatchCount": 0,
+              "matches": [
+                {
+                  "field": "Department Name",
+                  "expected": "Regulatory Affairs",
+                  "actual": "Regulatory Affairs"
+                },
+                {
+                  "field": "Remarks",
+                  "expected": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                  "actual": "Pharmaceutical product - Quality tested batch 9ABA9CBA"
+                }
+              ],
+              "mismatches": [],
+              "notFoundInAudit": [],
+              "auditFieldCount": 2,
+              "passed": true,
+              "fieldValidationResults": [
+                {
+                  "fieldName": "Department Name",
+                  "status": "PASS",
+                  "expected": "Regulatory Affairs",
+                  "actual": "Regulatory Affairs",
+                  "auditFieldName": "Department Name",
+                  "error": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "status": "PASS",
+                  "expected": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                  "actual": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                  "auditFieldName": "Remarks",
+                  "error": null
+                }
+              ],
+              "fieldValidationSummary": {
+                "passedFields": [
+                  "Department Name",
+                  "Remarks"
+                ],
+                "failedFields": [],
+                "missingFields": []
+              }
+            },
+            "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T09-40-05-033Z-department-create-audit-verified.png",
+            "fieldByFieldResults": {
+              "results": [
+                {
+                  "fieldName": "Department Name",
+                  "expected": "Regulatory Affairs",
+                  "actual": "Regulatory Affairs",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "expected": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                  "actual": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                }
+              ],
+              "passed": true,
+              "summary": {
+                "passed": 2,
+                "failed": 0,
+                "errors": 0,
+                "total": 2
+              }
+            },
+            "fieldValidationResults": [
+              {
+                "fieldName": "Department Name",
+                "expected": "Regulatory Affairs",
+                "actual": "Regulatory Affairs",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              },
+              {
+                "fieldName": "Remarks",
+                "expected": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                "actual": "Pharmaceutical product - Quality tested batch 9ABA9CBA",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              }
+            ],
+            "fieldValidationSummary": {
+              "total": 2,
+              "passed": 2,
+              "failed": 0,
+              "passedFields": [
+                "Department Name",
+                "Remarks"
+              ],
+              "failedFields": [],
+              "missingFields": []
+            }
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T09-40-18-093Z-department-create-passed-operation-complete.png",
+          "auditRequired": true,
+          "auditFieldCount": 2,
+          "auditPassed": true
+        }
+      ],
+      "auditMismatches": [],
+      "finishedAt": "3:10:32 pm"
+    },
+    {
+      "id": 1778751504689,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:08:24 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "3:08:46 pm"
+    },
+    {
+      "id": 1778750867275,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:57:47 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail",
+          "auditFailed": true,
+          "auditRan": true,
+          "auditPassed": false,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "rawOperations": [
+        {
+          "operation": "create",
+          "recordName": "Clinical Research",
+          "auditTrail": {
+            "Department Name": "Clinical Research",
+            "Remarks": "Standard pharmaceutical grade material B16AFB04"
+          },
+          "createdRecordDetails": {
+            "Department Name": "Clinical Research",
+            "Remarks": "Standard pharmaceutical grade material B16AFB04"
+          },
+          "alertMessage": "Saved successfully (API response succeeded)",
+          "fieldCount": 2,
+          "auditVerification": {
+            "verified": false,
+            "source": "row",
+            "detailOpened": false,
+            "queryUsed": "Clinical Research",
+            "matchedRow": "DP-26-000083 Department Name - Clinical Research - Created Dhruvi Shah 14-May-2026 14:56",
+            "matched": [
+              "master:Department",
+              "operation:create",
+              "identifier:Clinical Research",
+              "timestamp:friendly",
+              "field:Department Name"
+            ],
+            "missing": [],
+            "fieldMatches": [
+              "Department Name"
+            ],
+            "comparison": {
+              "totalChecked": 2,
+              "matchCount": 1,
+              "mismatchCount": 1,
+              "matches": [
+                {
+                  "field": "Department Name",
+                  "expected": "Clinical Research",
+                  "actual": "Clinical Research"
+                }
+              ],
+              "mismatches": [],
+              "notFoundInAudit": [
+                {
+                  "field": "Remarks",
+                  "expected": "Standard pharmaceutical grade material B16AFB04"
+                }
+              ],
+              "auditFieldCount": 1,
+              "passed": false,
+              "fieldValidationResults": [
+                {
+                  "fieldName": "Department Name",
+                  "status": "PASS",
+                  "expected": "Clinical Research",
+                  "actual": "Clinical Research",
+                  "auditFieldName": "Department Name",
+                  "error": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "status": "NOT_FOUND",
+                  "expected": "Standard pharmaceutical grade material B16AFB04",
+                  "actual": null,
+                  "auditFieldName": null,
+                  "error": "Field not found in audit trail"
+                }
+              ],
+              "fieldValidationSummary": {
+                "passedFields": [
+                  "Department Name"
+                ],
+                "failedFields": [],
+                "missingFields": [
+                  "Remarks"
+                ]
+              }
+            },
+            "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T09-28-54-969Z-department-create-audit-mismatch.png",
+            "fieldByFieldResults": {
+              "results": [
+                {
+                  "fieldName": "Department Name",
+                  "expected": "Clinical Research",
+                  "actual": "Clinical Research",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "expected": "Standard pharmaceutical grade material B16AFB04",
+                  "actual": null,
+                  "recordIDMatch": false,
+                  "status": "FAIL",
+                  "reason": "Value found but Record ID \"Clinical Research\" not in row"
+                }
+              ],
+              "passed": false,
+              "summary": {
+                "passed": 1,
+                "failed": 1,
+                "errors": 0,
+                "total": 2
+              }
+            },
+            "fieldValidationResults": [
+              {
+                "fieldName": "Department Name",
+                "expected": "Clinical Research",
+                "actual": "Clinical Research",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              },
+              {
+                "fieldName": "Remarks",
+                "expected": "Standard pharmaceutical grade material B16AFB04",
+                "actual": null,
+                "recordIDMatch": false,
+                "status": "FAIL",
+                "reason": "Value found but Record ID \"Clinical Research\" not in row"
+              }
+            ],
+            "fieldValidationSummary": {
+              "total": 2,
+              "passed": 1,
+              "failed": 1,
+              "passedFields": [
+                "Department Name"
+              ],
+              "failedFields": [
+                "Remarks"
+              ],
+              "missingFields": []
+            }
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T09-29-08-251Z-department-create-passed-operation-complete.png",
+          "auditRequired": true,
+          "auditFieldCount": 2,
+          "auditPassed": false
+        }
+      ],
+      "auditMismatches": [
+        {
+          "operation": "create",
+          "recordName": "Clinical Research",
+          "reason": "Audit mismatch: 1 field checks failed",
+          "mismatches": [],
+          "notFoundInAudit": [
+            {
+              "field": "Remarks",
+              "expected": "Standard pharmaceutical grade material B16AFB04"
+            }
+          ],
+          "matchCount": 1,
+          "mismatchCount": 1,
+          "fieldValidationResults": [
+            {
+              "fieldName": "Department Name",
+              "expected": "Clinical Research",
+              "actual": "Clinical Research",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Remarks",
+              "expected": "Standard pharmaceutical grade material B16AFB04",
+              "actual": null,
+              "recordIDMatch": false,
+              "status": "FAIL",
+              "reason": "Value found but Record ID \"Clinical Research\" not in row"
+            }
+          ],
+          "createdRecordDetails": {
+            "Department Name": "Clinical Research",
+            "Remarks": "Standard pharmaceutical grade material B16AFB04"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T09-28-54-969Z-department-create-audit-mismatch.png"
+        },
+        {
+          "operation": "create",
+          "recordName": "Clinical Research",
+          "reason": "Missing: ",
+          "fieldValidationResults": [
+            {
+              "fieldName": "Department Name",
+              "expected": "Clinical Research",
+              "actual": "Clinical Research",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Remarks",
+              "expected": "Standard pharmaceutical grade material B16AFB04",
+              "actual": null,
+              "recordIDMatch": false,
+              "status": "FAIL",
+              "reason": "Value found but Record ID \"Clinical Research\" not in row"
+            }
+          ],
+          "createdRecordDetails": {
+            "Department Name": "Clinical Research",
+            "Remarks": "Standard pharmaceutical grade material B16AFB04"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T09-28-54-969Z-department-create-audit-mismatch.png"
+        }
+      ],
+      "finishedAt": "2:59:21 pm"
+    },
+    {
+      "id": 1778750849074,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:57:29 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "2:57:42 pm"
+    },
+    {
+      "id": 1778750847437,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:57:27 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Backend connection reset. Please retry once backend is stable.",
+      "finishedAt": "2:57:27 pm"
+    },
+    {
+      "id": 1778738868924,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:37:48 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "11:42:06 am"
+    },
+    {
+      "id": 1778738842424,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:37:22 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "11:37:46 am"
+    },
+    {
+      "id": 1778738753905,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:35:53 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Backend connection reset. Please retry once backend is stable.",
+      "finishedAt": "11:35:54 am"
+    },
+    {
+      "id": 1778736402734,
+      "status": "pass",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "10:56:42 am",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "rawOperations": [
+        {
+          "operation": "create",
+          "recordName": "Supply Chain",
+          "auditTrail": {
+            "Department Name": "Supply Chain",
+            "Remarks": "Pharmaceutical product - Quality tested batch 388AB4D2"
+          },
+          "createdRecordDetails": {
+            "Department Name": "Supply Chain",
+            "Remarks": "Pharmaceutical product - Quality tested batch 388AB4D2"
+          },
+          "alertMessage": "Saved successfully (API response succeeded)",
+          "fieldCount": 2,
+          "auditVerification": {
+            "verified": true,
+            "source": "row",
+            "detailOpened": false,
+            "queryUsed": "Supply Chain",
+            "matchedRow": "DP-26-000082 Department Name - Supply Chain - Created Dhruvi Shah 14-May-2026 10:55",
+            "matched": [
+              "master:Department",
+              "operation:create",
+              "identifier:Supply Chain",
+              "timestamp:friendly",
+              "field:Department Name"
+            ],
+            "missing": [],
+            "fieldMatches": [
+              "Department Name"
+            ],
+            "comparison": {
+              "totalChecked": 1,
+              "matchCount": 1,
+              "mismatchCount": 0,
+              "matches": [
+                {
+                  "field": "Department Name",
+                  "expected": "Supply Chain",
+                  "actual": "Supply Chain"
+                }
+              ],
+              "mismatches": [],
+              "notFoundInAudit": [],
+              "auditFieldCount": 1,
+              "passed": true,
+              "fieldValidationResults": [
+                {
+                  "fieldName": "Department Name",
+                  "status": "PASS",
+                  "expected": "Supply Chain",
+                  "actual": "Supply Chain",
+                  "auditFieldName": "Department Name",
+                  "error": null
+                }
+              ],
+              "fieldValidationSummary": {
+                "passedFields": [
+                  "Department Name"
+                ],
+                "failedFields": [],
+                "missingFields": []
+              }
+            },
+            "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T05-28-04-402Z-department-create-audit-verified.png",
+            "fieldByFieldResults": {
+              "results": [
+                {
+                  "fieldName": "Department Name",
+                  "expected": "Supply Chain",
+                  "actual": "Supply Chain",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                }
+              ],
+              "passed": true,
+              "summary": {
+                "passed": 1,
+                "failed": 0,
+                "errors": 0,
+                "total": 1
+              }
+            },
+            "fieldValidationResults": [
+              {
+                "fieldName": "Department Name",
+                "expected": "Supply Chain",
+                "actual": "Supply Chain",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              }
+            ],
+            "fieldValidationSummary": {
+              "passedFields": [
+                "Department Name"
+              ],
+              "failedFields": [],
+              "missingFields": []
+            }
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T05-28-16-844Z-department-create-passed-operation-complete.png",
+          "auditRequired": true,
+          "auditFieldCount": 1,
+          "auditPassed": true
+        }
+      ],
+      "auditMismatches": [],
+      "finishedAt": "10:58:46 am"
+    },
+    {
+      "id": 1778736163937,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "10:52:43 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail",
+          "auditFailed": true,
+          "auditRan": true,
+          "auditPassed": false,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "rawOperations": [
+        {
+          "operation": "create",
+          "recordName": "535",
+          "auditTrail": {
+            "App Name": "Quality Management App 366C78B",
+            "App Code": "535",
+            "Form Submission To": "User",
+            "Remarks": "Batch created for regulatory compliance testing 9694D59A",
+            "appIconUrl": "Quality Management App B442EA6E434141A9"
+          },
+          "createdRecordDetails": {
+            "App Name": "Quality Management App 366C78B",
+            "App Code": "535",
+            "Site": "cs, RecIdTest_1774595872111, AUTO-SITE-MOTP33LF",
+            "Form Submission To": "User",
+            "Remarks": "Batch created for regulatory compliance testing 9694D59A"
+          },
+          "alertMessage": "Saved successfully (API response succeeded)",
+          "fieldCount": 5,
+          "auditVerification": {
+            "verified": false,
+            "source": "audit-report",
+            "detailOpened": false,
+            "queryUsed": "",
+            "matchedRow": "",
+            "matched": [],
+            "fieldMatches": [],
+            "reason": "Audit trail entry not found for Create App (create). Identifiers=[535] SampleRows=[App Access Control Audit Trail || Create App Audit Trail || Create Master Audit Trail || Create Object Audit Trail || Create Sub Template Audit Trail || Create Template Audit Trail || Email Template Audit Trail || Master Workflow Audit Trail]"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T05-25-50-326Z-create-app-create-passed-operation-complete.png",
+          "auditRequired": true,
+          "auditFieldCount": 4,
+          "auditPassed": false
+        }
+      ],
+      "auditMismatches": [
+        {
+          "operation": "create",
+          "recordName": "535",
+          "reason": "Audit trail entry not found for Create App (create). Identifiers=[535] SampleRows=[App Access Control Audit Trail || Create App Audit Trail || Create Master Audit Trail || Create Object Audit Trail || Create Sub Template Audit Trail || Create Template Audit Trail || Email Template Audit Trail || Master Workflow Audit Trail]",
+          "fieldValidationResults": [],
+          "createdRecordDetails": {
+            "App Name": "Quality Management App 366C78B",
+            "App Code": "535",
+            "Site": "cs, RecIdTest_1774595872111, AUTO-SITE-MOTP33LF",
+            "Form Submission To": "User",
+            "Remarks": "Batch created for regulatory compliance testing 9694D59A"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T05-25-56-233Z-create-app-create-failure.png"
+        }
+      ],
+      "finishedAt": "10:56:00 am"
+    },
+    {
+      "id": 1778732837988,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "9:57:17 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail",
+          "auditFailed": true,
+          "auditRan": true,
+          "auditPassed": false,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "rawOperations": [
+        {
+          "operation": "create",
+          "recordName": "Analytics",
+          "auditTrail": {
+            "Department Name": "Analytics",
+            "Remarks": "Clinical trial related batch record BFAEBEFD"
+          },
+          "createdRecordDetails": {
+            "Department Name": "Analytics",
+            "Remarks": "Clinical trial related batch record BFAEBEFD"
+          },
+          "alertMessage": "Saved successfully (form closed after request)",
+          "fieldCount": 2,
+          "auditVerification": {
+            "verified": false,
+            "source": "row",
+            "detailOpened": false,
+            "queryUsed": "Analytics",
+            "matchedRow": "DP-26-000081 Department Name - Analytics - Created Dhruvi Shah 14-May-2026 09:56",
+            "matched": [
+              "master:Department",
+              "operation:create",
+              "identifier:Analytics",
+              "timestamp:friendly",
+              "field:Department Name"
+            ],
+            "missing": [],
+            "fieldMatches": [
+              "Department Name"
+            ],
+            "comparison": {
+              "totalChecked": 2,
+              "matchCount": 1,
+              "mismatchCount": 1,
+              "matches": [
+                {
+                  "field": "Department Name",
+                  "expected": "Analytics",
+                  "actual": "Analytics"
+                }
+              ],
+              "mismatches": [],
+              "notFoundInAudit": [
+                {
+                  "field": "Remarks",
+                  "expected": "Clinical trial related batch record BFAEBEFD"
+                }
+              ],
+              "auditFieldCount": 1,
+              "passed": false,
+              "fieldValidationResults": [
+                {
+                  "fieldName": "Department Name",
+                  "status": "PASS",
+                  "expected": "Analytics",
+                  "actual": "Analytics",
+                  "auditFieldName": "Department Name",
+                  "error": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "status": "NOT_FOUND",
+                  "expected": "Clinical trial related batch record BFAEBEFD",
+                  "actual": null,
+                  "auditFieldName": null,
+                  "error": "Field not found in audit trail"
+                }
+              ],
+              "fieldValidationSummary": {
+                "passedFields": [
+                  "Department Name"
+                ],
+                "failedFields": [],
+                "missingFields": [
+                  "Remarks"
+                ]
+              }
+            },
+            "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T04-28-43-350Z-department-create-audit-mismatch.png",
+            "fieldByFieldResults": {
+              "results": [
+                {
+                  "fieldName": "Department Name",
+                  "expected": "Analytics",
+                  "actual": "Analytics",
+                  "recordIDMatch": true,
+                  "status": "PASS",
+                  "reason": null
+                },
+                {
+                  "fieldName": "Remarks",
+                  "expected": "Clinical trial related batch record BFAEBEFD",
+                  "actual": null,
+                  "recordIDMatch": false,
+                  "status": "FAIL",
+                  "reason": "Value found but Record ID \"Analytics\" not in row"
+                }
+              ],
+              "passed": false,
+              "summary": {
+                "passed": 1,
+                "failed": 1,
+                "errors": 0,
+                "total": 2
+              }
+            },
+            "fieldValidationResults": [
+              {
+                "fieldName": "Department Name",
+                "expected": "Analytics",
+                "actual": "Analytics",
+                "recordIDMatch": true,
+                "status": "PASS",
+                "reason": null
+              },
+              {
+                "fieldName": "Remarks",
+                "expected": "Clinical trial related batch record BFAEBEFD",
+                "actual": null,
+                "recordIDMatch": false,
+                "status": "FAIL",
+                "reason": "Value found but Record ID \"Analytics\" not in row"
+              }
+            ],
+            "fieldValidationSummary": {
+              "passedFields": [
+                "Department Name"
+              ],
+              "failedFields": [
+                "Remarks"
+              ],
+              "missingFields": []
+            }
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T04-28-56-494Z-department-create-passed-operation-complete.png",
+          "auditRequired": true,
+          "auditFieldCount": 2,
+          "auditPassed": false
+        }
+      ],
+      "auditMismatches": [
+        {
+          "operation": "create",
+          "recordName": "Analytics",
+          "reason": "Audit mismatch: 1 field checks failed",
+          "mismatches": [],
+          "notFoundInAudit": [
+            {
+              "field": "Remarks",
+              "expected": "Clinical trial related batch record BFAEBEFD"
+            }
+          ],
+          "matchCount": 1,
+          "mismatchCount": 1,
+          "fieldValidationResults": [
+            {
+              "fieldName": "Department Name",
+              "expected": "Analytics",
+              "actual": "Analytics",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Remarks",
+              "expected": "Clinical trial related batch record BFAEBEFD",
+              "actual": null,
+              "recordIDMatch": false,
+              "status": "FAIL",
+              "reason": "Value found but Record ID \"Analytics\" not in row"
+            }
+          ],
+          "createdRecordDetails": {
+            "Department Name": "Analytics",
+            "Remarks": "Clinical trial related batch record BFAEBEFD"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T04-28-43-350Z-department-create-audit-mismatch.png"
+        },
+        {
+          "operation": "create",
+          "recordName": "Analytics",
+          "reason": "Missing: ",
+          "fieldValidationResults": [
+            {
+              "fieldName": "Department Name",
+              "expected": "Analytics",
+              "actual": "Analytics",
+              "recordIDMatch": true,
+              "status": "PASS",
+              "reason": null
+            },
+            {
+              "fieldName": "Remarks",
+              "expected": "Clinical trial related batch record BFAEBEFD",
+              "actual": null,
+              "recordIDMatch": false,
+              "status": "FAIL",
+              "reason": "Value found but Record ID \"Analytics\" not in row"
+            }
+          ],
+          "createdRecordDetails": {
+            "Department Name": "Analytics",
+            "Remarks": "Clinical trial related batch record BFAEBEFD"
+          },
+          "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T04-28-43-350Z-department-create-audit-mismatch.png"
+        }
+      ],
+      "finishedAt": "9:59:08 am"
+    },
+    {
+      "id": 1778732835739,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "9:57:15 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Backend connection reset. Please retry once backend is stable.",
+      "finishedAt": "9:57:16 am"
+    },
+    {
+      "id": 1778679763756,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "7:12:43 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "7:14:54 pm"
+    },
+    {
+      "id": 1778678304317,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:48:24 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "6:48:46 pm"
+    },
+    {
+      "id": 1778677969573,
+      "status": "fail",
+      "master": "User",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:42:49 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "6:43:37 pm"
+    },
+    {
+      "id": 1778677439106,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:33:59 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "6:36:18 pm"
+    },
+    {
+      "id": 1778677413998,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:33:33 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "6:33:43 pm"
+    },
+    {
+      "id": 1778676573054,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:19:33 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "6:21:43 pm"
+    },
+    {
+      "id": 1778676530420,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:18:50 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.fill: Target page, context or browser has been closed",
+      "finishedAt": "6:19:31 pm"
+    },
+    {
+      "id": 1778676523606,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "6:18:43 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Backend connection reset. Please retry once backend is stable.",
+      "finishedAt": "6:18:44 pm"
+    },
+    {
+      "id": 1778671138374,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:48:58 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:51:14 pm"
+    },
+    {
+      "id": 1778670782051,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:43:02 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.goto: net::ERR_CONNECTION_TIMED_OUT at https://ipdev.quickflow.in/",
+      "finishedAt": "4:43:43 pm"
+    },
+    {
+      "id": 1778670662914,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:41:02 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://ipdev.quickflow.in/",
+      "finishedAt": "4:41:08 pm"
+    },
+    {
+      "id": 1778670654039,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:40:54 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://ipdev.quickflow.in/",
+      "finishedAt": "4:41:00 pm"
+    },
+    {
+      "id": 1778670546253,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:39:06 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://ipdev.quickflow.in/",
+      "finishedAt": "4:39:10 pm"
+    },
+    {
+      "id": 1778670514169,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:38:34 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.goto: net::ERR_NAME_NOT_RESOLVED at https://ipdev.quickflow.in/",
+      "finishedAt": "4:38:42 pm"
+    },
+    {
+      "id": 1778670503823,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "4:38:23 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.goto: net::ERR_NAME_NOT_RESOLVED at https://ipdev.quickflow.in/",
+      "finishedAt": "4:38:31 pm"
+    },
+    {
+      "id": 1778669734966,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:25:34 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:27:24 pm"
+    },
+    {
+      "id": 1778669712280,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "4:25:12 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:25:33 pm"
+    },
+    {
+      "id": 1778669243398,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:17:23 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:19:32 pm"
+    },
+    {
+      "id": 1778668727091,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:08:47 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:10:59 pm"
+    },
+    {
+      "id": 1778668680206,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:08:00 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "4:08:32 pm"
+    },
+    {
+      "id": 1778668213972,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "4:00:13 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "4:01:55 pm"
+    },
+    {
+      "id": 1778668195072,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:59:55 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "4:00:09 pm"
+    },
+    {
+      "id": 1778668192914,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:59:52 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Backend connection reset. Please retry once backend is stable.",
+      "finishedAt": "3:59:53 pm"
+    },
+    {
+      "id": 1778666143859,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:25:43 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:27:16 pm"
+    },
+    {
+      "id": 1778666089286,
+      "status": "fail",
+      "master": "Department",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:24:49 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "3:25:39 pm"
+    },
+    {
+      "id": 1778665858728,
+      "status": "pass",
+      "master": "Equipment-Name-Master",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:20:58 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false,
+          "message": ""
+        }
+      ],
+      "finishedAt": "3:23:10 pm"
+    },
+    {
+      "id": 1778665668001,
+      "status": "fail",
+      "master": "Operation",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:17:48 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:20:26 pm"
+    },
+    {
+      "id": 1778664509180,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:58:29 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "2:59:59 pm"
+    },
+    {
+      "id": 1778664479010,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:57:59 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "2:58:19 pm"
+    },
+    {
+      "id": 1778664425480,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:57:05 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "2:57:50 pm"
+    },
+    {
+      "id": 1778656972655,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:52:52 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:54:32 pm"
+    },
+    {
+      "id": 1778656913742,
+      "status": "fail",
+      "master": "Operation",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:51:53 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:52:44 pm"
+    },
+    {
+      "id": 1778656849508,
+      "status": "fail",
+      "master": "Operation",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:50:49 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "12:51:43 pm"
+    },
+    {
+      "id": 1778656222757,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:40:22 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:44:57 pm"
+    },
+    {
+      "id": 1778655735948,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:32:15 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "skip",
+          "auditFailed": false,
+          "auditRan": false,
+          "auditPassed": false,
+          "skipped": true,
+          "message": ""
+        }
+      ],
+      "finishedAt": "12:36:56 pm"
+    },
+    {
+      "id": 1778655675095,
+      "status": "fail",
+      "master": "Role",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:31:15 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:32:15 pm"
+    },
+    {
+      "id": 1778655596044,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:29:56 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "12:30:50 pm"
+    },
+    {
+      "id": 1778655534525,
+      "status": "fail",
+      "master": "Role",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:28:54 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:29:56 pm"
+    },
+    {
+      "id": 1778654602913,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:13:22 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:17:12 pm"
+    },
+    {
+      "id": 1778654543818,
+      "status": "fail",
+      "master": "Role",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:12:23 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:13:22 pm"
+    },
+    {
+      "id": 1778654524685,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:12:04 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "page.waitForSelector: Target page, context or browser has been closed",
+      "finishedAt": "12:12:17 pm"
+    },
+    {
+      "id": 1778654483940,
+      "status": "fail",
+      "master": "Role",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:11:23 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "12:12:04 pm"
+    },
+    {
+      "id": 1778654380021,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:09:40 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Error: page.waitForSelector: Timeout 30000ms exceeded.",
+      "finishedAt": "12:10:26 pm"
+    },
+    {
+      "id": 1778654331973,
+      "status": "fail",
+      "master": "Role",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:08:51 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "12:09:40 pm"
+    },
+    {
+      "id": 1778652084085,
+      "status": "fail",
+      "master": "Site",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:31:24 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "11:36:38 am"
+    },
+    {
+      "id": 1778651935148,
+      "status": "fail",
+      "master": "Country",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:28:55 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "11:31:24 am"
+    },
+    {
+      "id": 1778650833614,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:10:33 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "11:12:47 am"
+    },
+    {
+      "id": 1778650828029,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "11:10:28 am",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "Backend connection reset. Please retry once backend is stable.",
+      "finishedAt": "11:10:28 am"
+    },
+    {
+      "id": 1778581271575,
+      "status": "pass",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:51:11 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false
+        }
+      ],
+      "finishedAt": "3:52:38 pm"
+    },
+    {
+      "id": 1778580245466,
+      "status": "pass",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "3:34:05 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false
+        }
+      ],
+      "finishedAt": "3:35:34 pm"
+    },
+    {
+      "id": 1778579652503,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "3:24:12 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:26:52 pm"
+    },
+    {
+      "id": 1778579453008,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "3:20:53 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:24:05 pm"
+    },
+    {
+      "id": 1778579149454,
+      "status": "skip",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "3:15:49 pm",
+      "overallStatus": "skip",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "skip",
+          "auditFailed": false,
+          "auditRan": false,
+          "auditPassed": false,
+          "skipped": true
+        }
+      ],
+      "finishedAt": "3:20:04 pm"
+    },
+    {
+      "id": 1778578103283,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "2:58:23 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "3:00:23 pm"
+    },
+    {
+      "id": 1778572685445,
+      "status": "pass",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "1:28:05 pm",
+      "overallStatus": "pass",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "pass",
+          "auditFailed": false,
+          "auditRan": true,
+          "auditPassed": true,
+          "skipped": false
+        }
+      ],
+      "finishedAt": "1:29:31 pm"
+    },
+    {
+      "id": 1778572195625,
+      "status": "fail",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": false,
+      "startedAt": "1:19:55 pm",
+      "overallStatus": "fail",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "fail"
+        }
+      ],
+      "error": "[LOGIN] ✓ Logged in",
+      "finishedAt": "1:20:46 pm"
+    },
+    {
+      "id": 1778570009563,
+      "status": "skip",
+      "master": "Create-App",
+      "operation": "create",
+      "verifyAuditTrail": true,
+      "startedAt": "12:43:29 pm",
+      "overallStatus": "skip",
+      "operationStatuses": [
+        {
+          "operation": "create",
+          "status": "skip",
+          "auditFailed": false,
+          "auditRan": false,
+          "auditPassed": false,
+          "skipped": true
+        }
+      ],
+      "finishedAt": "12:47:20 pm"
+    },
+    {
       "id": 1777470829588,
       "status": "fail",
       "master": "Site",
@@ -683,5 +3076,5 @@
       "finishedAt": "12:14:28 pm"
     }
   ],
-  "savedAt": "2026-04-29T14:00:50.051Z"
+  "savedAt": "2026-05-14T10:24:23.947Z"
 }

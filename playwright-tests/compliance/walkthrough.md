@@ -7,7 +7,7 @@ I have successfully implemented the Data Integrity (DI) compliance tests in an e
 I created a new Playwright test suite located at:
 `[playwright-tests/compliance/data-integrity.spec.js](file:///c:/Users/aakash.prajapati/Downloads/TestHive/playwright-tests/compliance/data-integrity.spec.js)`
 
-This file uses the native `@playwright/test` runner to execute the 10 specific compliance test cases. Native Playwright was chosen because it allows us to do complex assertions (like simulating network disconnects and running parallel browser sessions) much more cleanly than standalone Node scripts.
+This file uses the native `@playwright/test` runner to execute the 10 specific compliance test steps . Native Playwright was chosen because it allows us to do complex assertions (like simulating network disconnects and running parallel browser sessions) much more cleanly than standalone Node scripts.
 
 ### Test Implementations
 

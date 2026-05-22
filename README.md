@@ -185,7 +185,7 @@ Unit & integration tests: there are no dedicated unit test suites in `frontend/`
 
 ## Compliance & Security
 
-- Compliance tests live in `playwright-tests/compliance/` and are executed via `compliance-runner.js`. They focus on Data Integrity test-cases (attributability, legibility, mandatory enforcement, concurrent edits, etc.).
+- Compliance tests live in `playwright-tests/compliance/` and are executed via `compliance-runner.js`. They focus on Data Integrity test-steps(attributability, legibility, mandatory enforcement, concurrent edits, etc.).
 - Data privacy: test runs generate screenshots, video recordings, and JSON logs. Treat stored artifacts as sensitive if they contain PII. The repo does not encrypt or expunge artifacts automatically.
 - Security: there is no authentication/authorization enforced on the UI/backend. If exposing externally, add an auth layer and secure storage.
 

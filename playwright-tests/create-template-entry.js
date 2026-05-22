@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const { randomBytes, randomUUID } = require('crypto');
 const { chromium } = require('@playwright/test');
 const {
   enableArtifactOverlayOnContext,
@@ -29,7 +30,10 @@ function boolEnv(value, defaultValue) {
 }
 
 function randomName() {
-  const stamp = Date.now().toString(36).toUpperCase();
+  const stamp = (typeof randomUUID === 'function'
+    ? randomUUID().replace(/-/g, '')
+    : randomBytes(16).toString('hex')
+  ).toUpperCase().slice(0, 16);
   return `AUTO-TEMPLATE-${stamp}`;
 }
 

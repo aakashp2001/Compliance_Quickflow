@@ -74,7 +74,7 @@ function isMeaningfulValue(value) {
   return !/^(true|false|null|undefined|select|choose)$/i.test(text);
 }
 
-function pickPreferredEntries(auditTrail, limit = 4) {
+function pickPreferredEntries(auditTrail, limit = 25) {
   return Object.entries(auditTrail || {})
     .filter(([key, value]) => isMeaningfulValue(value) && !/password|confirm password/i.test(String(key || '')))
     .sort((left, right) => {
@@ -108,6 +108,16 @@ function inferPrimaryRecordIdentifier(auditTrail, fallbackValue = '') {
     });
 
   return String(preferred[0]?.[1] || fallbackValue || '').trim();
+}
+
+function isLikelyRecordId(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  // Common IDs like DP-26-000083, USR-01-0001, etc.
+  if (/^[A-Z]{1,10}-\d{1,8}-\d{1,12}$/i.test(text)) return true;
+  // Generic fallback: token with at least one dash and enough digits.
+  if (/^[A-Z0-9]+(?:-[A-Z0-9]+){1,}$/i.test(text) && (text.match(/\d/g) || []).length >= 3) return true;
+  return false;
 }
 
 function includesNormalized(haystack, needle) {
@@ -270,8 +280,13 @@ async function ensurePerformedOnDateRange(page) {
     return { filled: false, reason: 'page-closed-or-invalid' };
   }
 
-  const DEFAULT_FROM = '01/01/2000';
-  const DEFAULT_TO = '12/31/2099';
+  // Do the default from and to date as today -1 date to +1 date in this format '12/31/2099'
+  const today = new Date();
+  const DEFAULT_FROM = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate() - 1).padStart(2, '0')}/${today.getFullYear()}`;
+  const DEFAULT_TO = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
+  // const DEFAULT_FROM = '01/01/2000';
+  // const DEFAULT_TO = '12/31/2099';
 
   const result = await safeEvaluate(page, ({ defaultFrom, defaultTo }) => {
     const isVisible = (el) => !!el && !!el.offsetParent;
@@ -828,6 +843,208 @@ async function collectVisibleRows(page, limit = 20) {
   }, { selector: AUDIT_ROW_SELECTOR, maxRows: limit }).catch(() => []);
 }
 
+async function collectVisibleRowsWithStatusSnapshot(page, limit = 100) {
+  return page.evaluate(({ selector, maxRows }) => {
+    const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const isReasonHeader = (value) => {
+      const v = normalize(value);
+      return v === 'reason' || v.includes('reason') || v.includes('remark') || v.includes('comment') || v.includes('note');
+    };
+    const allRows = Array.from(document.querySelectorAll(selector));
+
+    const globalHeaders = Array.from(document.querySelectorAll('table thead th'))
+      .map((th) => (th.innerText || th.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const globalStatusIndex = globalHeaders.findIndex((h) => normalize(h) === 'status' || normalize(h).includes('status'));
+    const globalReasonIndex = globalHeaders.findIndex((h) => isReasonHeader(h));
+
+    const rows = allRows
+      .map((row, index) => {
+        const text = (row.innerText || row.textContent || '').replace(/\s+/g, ' ').trim();
+        const visible = row.offsetParent !== null;
+        const cells = Array.from(row.querySelectorAll('td')).map((cell) => (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim());
+
+        const table = row.closest('table');
+        const localHeaders = table
+          ? Array.from(table.querySelectorAll('thead th')).map((th) => (th.innerText || th.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+          : [];
+
+        const headers = localHeaders.length ? localHeaders : globalHeaders;
+        const statusColumnIndex = headers.findIndex((h) => normalize(h) === 'status' || normalize(h).includes('status'));
+        const resolvedStatusIndex = statusColumnIndex >= 0 ? statusColumnIndex : globalStatusIndex;
+        const statusValue = resolvedStatusIndex >= 0 ? String(cells[resolvedStatusIndex] || '').trim() : '';
+        const reasonColumnIndex = headers.findIndex((h) => isReasonHeader(h));
+        const resolvedReasonIndex = reasonColumnIndex >= 0 ? reasonColumnIndex : globalReasonIndex;
+        const reasonValue = resolvedReasonIndex >= 0 ? String(cells[resolvedReasonIndex] || '').trim() : '';
+
+        return {
+          index,
+          visible,
+          text,
+          headers,
+          cells,
+          statusColumnIndex: resolvedStatusIndex,
+          statusHeader: resolvedStatusIndex >= 0 ? String(headers[resolvedStatusIndex] || 'Status') : '',
+          statusValue,
+          reasonColumnIndex: resolvedReasonIndex,
+          reasonHeader: resolvedReasonIndex >= 0 ? String(headers[resolvedReasonIndex] || 'Reason') : '',
+          reasonValue,
+        };
+      })
+      .filter((row) => row.text && !/no data available in table|no matching/i.test(row.text))
+      .slice(0, maxRows);
+
+    const statusColumnIndex = rows.find((r) => r.statusColumnIndex >= 0)?.statusColumnIndex ?? -1;
+    const statusHeader = rows.find((r) => r.statusColumnIndex >= 0)?.statusHeader || '';
+    const reasonColumnIndex = rows.find((r) => r.reasonColumnIndex >= 0)?.reasonColumnIndex ?? -1;
+    const reasonHeader = rows.find((r) => r.reasonColumnIndex >= 0)?.reasonHeader || '';
+
+    return {
+      rows,
+      statusColumnFound: statusColumnIndex >= 0,
+      statusColumnIndex,
+      statusHeader,
+      reasonColumnFound: reasonColumnIndex >= 0,
+      reasonColumnIndex,
+      reasonHeader,
+    };
+  }, { selector: AUDIT_ROW_SELECTOR, maxRows: limit }).catch(() => ({ rows: [], statusColumnFound: false, statusColumnIndex: -1, statusHeader: '', reasonColumnFound: false, reasonColumnIndex: -1, reasonHeader: '' }));
+}
+
+function filterOperationScopedRowSnapshots(rows, expected) {
+  const snapshots = Array.isArray(rows) ? rows : [];
+  if (!snapshots.length) return [];
+
+  const operation = String(expected?.operation || '').toLowerCase();
+  const opPattern = buildOperationPattern(expected?.operation);
+  const normalizedReason = normalizeText(expected?.reason || '');
+  const identifiers = uniqueNonEmpty(expected?.identifiers || []);
+
+  const identifierRows = snapshots.filter((row) => {
+    const rowText = String(row?.text || '');
+    const rowCellsText = Array.isArray(row?.cells) ? row.cells.join(' ') : '';
+    const searchable = `${rowText} ${rowCellsText}`.trim();
+
+    return identifiers.length === 0
+      ? true
+      : identifiers.some((id) => includesNormalized(searchable, id));
+  });
+
+  if (!identifierRows.length) return [];
+
+  const hasOperationAnchor = identifierRows.some((row) => {
+    const rowText = String(row?.text || '');
+    const statusValue = String(row?.statusValue || '');
+    return opPattern.test(statusValue) || opPattern.test(rowText);
+  });
+  if (!hasOperationAnchor) return [];
+
+  let scopedIdentifierRows = identifierRows;
+
+  if (operation === 'update') {
+    const reasonRows = identifierRows.filter((row) => {
+      const reasonValue = String(row?.reasonValue || '');
+      return !!normalizeText(reasonValue);
+    });
+
+    if (normalizedReason) {
+      const anchorRows = reasonRows.filter((row) => {
+        const reasonValue = String(row?.reasonValue || '');
+        const rowText = String(row?.text || '');
+        const rowCellsText = Array.isArray(row?.cells) ? row.cells.join(' ') : '';
+        const searchable = `${rowText} ${rowCellsText}`.trim();
+        return includesNormalized(reasonValue, normalizedReason) || includesNormalized(searchable, normalizedReason);
+      });
+      if (!anchorRows.length) return [];
+
+      const anchorIndex = Number(anchorRows[0]?.index);
+      const reasonIndexes = reasonRows
+        .map((row) => Number(row?.index))
+        .filter((value) => Number.isFinite(value))
+        .sort((a, b) => a - b);
+
+      const previousReasonIndex = reasonIndexes.filter((value) => value < anchorIndex).pop();
+      const nextReasonIndex = reasonIndexes.find((value) => value > anchorIndex);
+      const startIndex = Number.isFinite(previousReasonIndex) ? previousReasonIndex + 1 : -Infinity;
+      const endIndex = Number.isFinite(nextReasonIndex) ? nextReasonIndex - 1 : Infinity;
+
+      scopedIdentifierRows = identifierRows.filter((row) => {
+        const idx = Number(row?.index);
+        return Number.isFinite(idx) && idx >= startIndex && idx <= endIndex;
+      });
+    }
+  }
+
+  return scopedIdentifierRows.filter((row) => {
+    const rowText = String(row?.text || '');
+    const statusValue = String(row?.statusValue || '');
+    const statusNorm = normalizeText(statusValue);
+    const operationOk = opPattern.test(statusValue) || opPattern.test(rowText);
+
+    if (!statusNorm) return true;
+    if (operationOk) return true;
+
+    if (operation === 'create' || operation === 'update' || operation === 'delete') {
+      return false;
+    }
+
+    return operationOk;
+  });
+}
+
+function extractStructuredFieldsFromSnapshots(snapshots) {
+  const norm = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const rows = Array.isArray(snapshots) ? snapshots : [];
+  const out = [];
+  const findHeaderIndex = (headers, pattern) => headers.findIndex((h) => pattern.test(norm(h)));
+
+  for (const row of rows) {
+    const headers = Array.isArray(row?.headers) ? row.headers : [];
+    const cells = Array.isArray(row?.cells) ? row.cells : [];
+    if (!cells.length) continue;
+
+    const fieldIdx = findHeaderIndex(headers, /^field\s*name$|^field$|^column\s*name$|^column$/i);
+    const oldIdx = findHeaderIndex(headers, /^old\s*value$/i);
+    const newIdx = findHeaderIndex(headers, /^new\s*value$/i);
+    const perfOnIdx = findHeaderIndex(headers, /^performed\s*on$|^timestamp$|^date\s*time$/i);
+
+    const fieldName = fieldIdx >= 0
+      ? String(cells[fieldIdx] || '').trim()
+      : String(cells[1] || cells[0] || '').trim();
+    const oldValue = oldIdx >= 0
+      ? String(cells[oldIdx] || '').trim()
+      : String(cells[2] || '').trim();
+    const newValue = newIdx >= 0
+      ? String(cells[newIdx] || '').trim()
+      : String(cells[3] || cells[cells.length - 1] || '').trim();
+    const timestamp = perfOnIdx >= 0
+      ? String(cells[perfOnIdx] || '').trim()
+      : '';
+
+    const fieldNorm = norm(fieldName);
+    if (!fieldNorm) continue;
+    if (/^(field\s*name|old\s*value|new\s*value|performed\s*on|status|reason|remarks?|comment|notes?)$/.test(fieldNorm)) continue;
+
+    out.push({ fieldName, oldValue, newValue, timestamp });
+  }
+
+  const score = (entry) => {
+    let total = 0;
+    if (String(entry?.oldValue || '').trim()) total += 1;
+    if (String(entry?.newValue || '').trim()) total += 2;
+    if (String(entry?.timestamp || '').trim()) total += 1;
+    return total;
+  };
+
+  const dedup = new Map();
+  for (const entry of out) {
+    const key = norm(entry.fieldName);
+    const prev = dedup.get(key);
+    if (!prev || score(entry) > score(prev)) dedup.set(key, entry);
+  }
+  return Array.from(dedup.values());
+}
+
 function findMatchingRow(rows, expected) {
   return rows.find((row) => {
     const text = row.text;
@@ -1077,71 +1294,125 @@ async function closeAuditDetails(page, overlay) {
   await safeWait(page, 300);
 }
 
-function compareAuditWithDashboard(auditFields, expectedAuditTrail, operation) {
+function compareAuditWithDashboard(auditFields, expectedAuditTrail, operation, options = {}) {
   const norm = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const isOptionalUnchangedField = (key) => /^(remarks?|reason|comment|description|notes?)$/i.test(String(key || '').trim());
+  const compactKey = (value) => norm(value).replace(/[^a-z0-9]/g, '');
+  const shouldSkipField = (key) => /password|confirm\s*password|update\s*remarks?|reason|description/i.test(String(key || ''));
+  const splitMultiValue = (value) => String(value || '')
+    .split(/[,;|\n]+/)
+    .map((part) => norm(part))
+    .filter(Boolean);
+  const normalizeValue = (value) => {
+    const text = norm(value);
+    if (!text) return '';
+    const parts = splitMultiValue(text);
+    if (parts.length > 1) {
+      return Array.from(new Set(parts)).sort().join(',');
+    }
+    return text;
+  };
+  
+  const fieldValidationResults = []; // Store individual field validation details
   const matches = [];
   const mismatches = [];
   const notFoundInAudit = [];
   const expectedMissingInAudit = [];
+  const skipFields = Array.isArray(options?.skipFields) ? options.skipFields : [];
+  const skipNormSet = new Set(skipFields.map((field) => norm(field)).filter(Boolean));
+  const skipCompactSet = new Set(skipFields.map((field) => compactKey(field)).filter(Boolean));
+  const isValueMatch = (actual, expected) => actual === expected;
 
   const auditMap = new Map();
+  const auditCompactMap = new Map();
   for (const field of auditFields) {
-    auditMap.set(norm(field.fieldName), field);
+    const key = norm(field.fieldName);
+    const compact = compactKey(field.fieldName);
+    auditMap.set(key, field);
+    if (compact && !auditCompactMap.has(compact)) {
+      auditCompactMap.set(compact, field);
+    }
   }
 
   for (const [key, expectedValue] of Object.entries(expectedAuditTrail || {})) {
-    const expectedNorm = norm(expectedValue);
+    const expectedNorm = normalizeValue(expectedValue);
     if (!expectedNorm) continue;
-    // Skip internal/system keys
-    if (/password|confirm\s*password/i.test(key)) continue;
+    // Skip internal/system keys and update reasons that are not master field values.
+    if (shouldSkipField(key)) continue;
 
-    const auditField = auditMap.get(norm(key));
-    if (!auditField) {
-      // Try fuzzy: field name might be slightly different
-      let found = null;
-      for (const [auditKey, auditEntry] of auditMap) {
-        if (auditKey.includes(norm(key)) || norm(key).includes(auditKey)) {
-          found = auditEntry;
-          break;
-        }
-      }
-      if (found) {
-        const actualValue = operation === 'delete' ? norm(found.oldValue) : norm(found.newValue);
-        if (actualValue === expectedNorm || actualValue.includes(expectedNorm) || expectedNorm.includes(actualValue)) {
-          matches.push({ field: key, expected: String(expectedValue), actual: operation === 'delete' ? found.oldValue : found.newValue });
-        } else {
-          mismatches.push({ field: key, expected: String(expectedValue), actual: operation === 'delete' ? found.oldValue : found.newValue, auditField: found.fieldName });
-        }
-      } else {
-        if (operation === 'update' && isOptionalUnchangedField(key)) {
-          expectedMissingInAudit.push({ field: key, expected: String(expectedValue), reason: 'unchanged-field-expected-missing' });
-        } else {
-          notFoundInAudit.push({ field: key, expected: String(expectedValue) });
-        }
-      }
+    const exactKey = norm(key);
+    const compactExpectedKey = compactKey(key);
+
+    if (skipNormSet.has(exactKey) || (compactExpectedKey && skipCompactSet.has(compactExpectedKey))) {
+      expectedMissingInAudit.push({ field: key, expected: String(expectedValue), reason: 'unchanged-update-field' });
+      fieldValidationResults.push({
+        fieldName: key,
+        status: 'EXPECTED_MISSING',
+        expected: String(expectedValue),
+        actual: null,
+        auditFieldName: null,
+        error: null,
+      });
       continue;
     }
 
-    const actualValue = operation === 'delete' ? norm(auditField.oldValue) : norm(auditField.newValue);
+    const auditField = auditMap.get(exactKey) || auditCompactMap.get(compactExpectedKey);
+    
+    if (!auditField) {
+      notFoundInAudit.push({ field: key, expected: String(expectedValue) });
+      fieldValidationResults.push({
+        fieldName: key,
+        status: 'NOT_FOUND',
+        expected: String(expectedValue),
+        actual: null,
+        auditFieldName: null,
+        error: `Field not found in audit trail`
+      });
+      continue;
+    }
+
+    const actualValue = normalizeValue(operation === 'delete' ? auditField.oldValue : auditField.newValue);
     const isCreate = operation === 'create';
     const oldValueEmpty = !auditField.oldValue || /null|undefined|^\s*$|^-+$|^n\/?a$|^\(none\)$/i.test(auditField.oldValue);
     
     let match = false;
-    if (actualValue === expectedNorm || actualValue.includes(expectedNorm) || expectedNorm.includes(actualValue)) {
+    if (isValueMatch(actualValue, expectedNorm)) {
       match = true;
     }
 
     if (match && isCreate && !oldValueEmpty) {
        mismatches.push({ field: key, expected: String(expectedValue), actual: auditField.newValue, error: `Old value for create should be empty, but was "${auditField.oldValue}"` });
+       fieldValidationResults.push({
+         fieldName: key,
+         status: 'MISMATCH',
+         expected: String(expectedValue),
+         actual: auditField.newValue,
+         auditFieldName: auditField.fieldName,
+         error: `Old value for create should be empty, but was "${auditField.oldValue}"`
+       });
     } else if (match) {
       matches.push({ field: key, expected: String(expectedValue), actual: operation === 'delete' ? auditField.oldValue : auditField.newValue });
+      fieldValidationResults.push({
+        fieldName: key,
+        status: 'PASS',
+        expected: String(expectedValue),
+        actual: operation === 'delete' ? auditField.oldValue : auditField.newValue,
+        auditFieldName: auditField.fieldName,
+        error: null
+      });
     } else {
       mismatches.push({ field: key, expected: String(expectedValue), actual: operation === 'delete' ? auditField.oldValue : auditField.newValue, auditField: auditField.fieldName });
+      fieldValidationResults.push({
+        fieldName: key,
+        status: 'MISMATCH',
+        expected: String(expectedValue),
+        actual: operation === 'delete' ? auditField.oldValue : auditField.newValue,
+        auditFieldName: auditField.fieldName,
+        error: `Expected "${expectedValue}" but found "${operation === 'delete' ? auditField.oldValue : auditField.newValue}"`
+      });
     }
   }
 
-  const totalChecked = matches.length + mismatches.length + notFoundInAudit.length + expectedMissingInAudit.length;
+  const totalChecked = matches.length + mismatches.length + notFoundInAudit.length;
   return {
     totalChecked,
     matchCount: matches.length,
@@ -1152,6 +1423,14 @@ function compareAuditWithDashboard(auditFields, expectedAuditTrail, operation) {
     expectedMissingInAudit,
     auditFieldCount: auditFields.length,
     passed: mismatches.length === 0 && notFoundInAudit.length === 0,
+    // NEW: Single field validation details
+    fieldValidationResults: fieldValidationResults,
+    fieldValidationSummary: {
+      passedFields: fieldValidationResults.filter(f => f.status === 'PASS').map(f => f.fieldName),
+      failedFields: fieldValidationResults.filter(f => f.status === 'MISMATCH').map(f => f.fieldName),
+      missingFields: fieldValidationResults.filter(f => f.status === 'NOT_FOUND').map(f => f.fieldName),
+      expectedMissingFields: fieldValidationResults.filter(f => f.status === 'EXPECTED_MISSING').map(f => f.fieldName),
+    }
   };
 }
 
@@ -1221,7 +1500,7 @@ function analyzeAuditText(text, expected, requireFieldEvidence) {
     matched.push('timestamp:iso8601');
   } else if (friendlyMatch) {
     // If requirement is STRICT ISO 8601, this might be a fail, but we'll log it.
-    matched.push('timestamp:friendly');
+    matched.push(`timestamp:${foundTimestamp}`);
     console.warn(`[AUDIT] Found friendly timestamp "${foundTimestamp}" instead of ISO 8601.`);
   }
 
@@ -1285,6 +1564,10 @@ function analyzeAuditText(text, expected, requireFieldEvidence) {
 
 async function navigateAndSearchMasterAudit(page, baseURL, expected) {
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const isActualReportViewUrl = (url) => {
+    const href = typeof url === 'string' ? url : String(url?.href || '');
+    return /\/report\/view(?:\?|$|#|\/)/i.test(href) && !/\/report\/viewer(?:\?|$|#|\/)/i.test(href);
+  };
   const masterDisplay = expected.masterDisplayName || formatMasterDisplayName(expected.masterName);
   const exactReportName = `${masterDisplay} Audit Trail`;
   const exactPattern = new RegExp(`^\\s*${exactReportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
@@ -1396,11 +1679,16 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
       console.log(`[AUDIT] Found "${exactReportName}" in category: ${category}`);
       const clickOutcome = await Promise.all([
         page.waitForEvent('popup', { timeout: 10000 }).catch(() => null),
-        page.waitForURL(/\/report\/view/i, { timeout: 10000 }).then(() => true).catch(() => false),
+        page.waitForURL((url) => isActualReportViewUrl(url), { timeout: 10000 }).then(() => true).catch(() => false),
         reportLink.click({ timeout: 8000, force: true }).catch(() => {}),
       ]);
       popup = clickOutcome[0];
       navigatedInSameTab = clickOutcome[1] === true;
+      if (!popup && !navigatedInSameTab) {
+        console.log(`[AUDIT] Clicked "${exactReportName}", but actual report view did not open from: ${category}`);
+        await fillFilterInput('');
+        return false;
+      }
       foundInCategory = category;
       return true;
     }
@@ -1414,11 +1702,15 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
 
       const clickOutcome = await Promise.all([
         page.waitForEvent('popup', { timeout: 8000 }).catch(() => null),
-        page.waitForURL(/\/report\/view/i, { timeout: 8000 }).then(() => true).catch(() => false),
+        page.waitForURL((url) => isActualReportViewUrl(url), { timeout: 8000 }).then(() => true).catch(() => false),
         link.click({ timeout: 5000, force: true }).catch(() => {}),
       ]);
       popup = clickOutcome[0];
       navigatedInSameTab = clickOutcome[1] === true;
+      if (!popup && !navigatedInSameTab) {
+        console.log(`[AUDIT] Clicked fallback link "${text}", but actual report view did not open from: ${category}`);
+        continue;
+      }
       foundInCategory = category;
       console.log(`[AUDIT] Clicked fallback link "${text}" in category: ${category}`);
       return true;
@@ -1459,7 +1751,7 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
       try {
         // Wait for popup to navigate away from about:blank to the actual report URL
         if (!popup.url() || popup.url() === 'about:blank') {
-          await popup.waitForURL(/\/report\/view/i, { timeout: 20000 }).catch(async () => {
+          await popup.waitForURL((url) => isActualReportViewUrl(url), { timeout: 20000 }).catch(async () => {
             // Also accept any non-blank URL as the popup may have a different path
             await popup.waitForURL((url) => url.href !== 'about:blank' && url.href !== '', { timeout: 10000 }).catch(() => {});
           });
@@ -1496,7 +1788,7 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
     }
   }
 
-  if (!popup && !page.isClosed() && (navigatedInSameTab || /\/report\/view/i.test(String(page.url() || '')))) {
+  if (!popup && !page.isClosed() && (navigatedInSameTab || isActualReportViewUrl(page.url()))) {
     await page.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
     await delay(1200);
@@ -1504,7 +1796,7 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
     console.log(`[AUDIT] Report opened in same tab (${foundInCategory || 'unknown category'}): ${page.url()}`);
   } else if (!popup) {
     // Last resort: use any already-open /report/view popup
-    const openPopups = page.context().pages().filter((p) => !p.isClosed() && p !== page && /\/report\/view/i.test(String(p.url() || '')));
+    const openPopups = page.context().pages().filter((p) => !p.isClosed() && p !== page && isActualReportViewUrl(p.url()));
     if (openPopups.length) {
       reportContext = openPopups[openPopups.length - 1];
       await reportContext.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
@@ -1516,6 +1808,326 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
 
   return reportContext;
 }
+
+async function verifyEachFieldIndividually(reportContext, recordID, fieldsToVerify, options = {}) {
+  /**
+   * Verifies each field individually by searching the audit trail using the
+   * VALUE that was entered (not the field name), then confirming:
+   *   - The matching row contains the correct Record ID
+   *   - The matching row's Field Name column matches the expected field name
+   *
+   * Search-by-value approach matches how the audit table looks:
+   *   Record ID | Field Name | Old Value | New Value | ...
+   */
+  const norm = (v) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const splitMultiValue = (value) => String(value || '')
+    .split(/[,;|\n]+/)
+    .map((part) => norm(part))
+    .filter(Boolean);
+  const normalizeComparableValue = (value) => {
+    const text = norm(value);
+    if (!text) return '';
+    const parts = splitMultiValue(text);
+    if (parts.length > 1) {
+      return Array.from(new Set(parts)).sort().join(',');
+    }
+    return text;
+  };
+  const buildSearchCandidates = (value) => {
+    const raw = String(value || '').replace(/\s+/g, ' ').trim();
+    const parts = splitMultiValue(raw)
+      .map((part) => String(part || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+
+    return Array.from(new Set([
+      raw,
+      ...parts,
+      parts.slice(0, 2).join(' '),
+      parts.slice(0, 3).join(' '),
+    ].map((item) => String(item || '').trim()).filter(Boolean)));
+  };
+
+  const fieldResults = [];
+  const shouldSkipField = (key) => /password|confirm\s*password|update\s*remarks?|reason|description/i.test(String(key || ''));
+  const operation = String(options?.operation || '').toLowerCase();
+  const skipFields = Array.isArray(options?.skipFields) ? options.skipFields : [];
+  const skipNormSet = new Set(skipFields.map((field) => norm(field)).filter(Boolean));
+  const skipCompactSet = new Set(skipFields.map((field) => norm(field).replace(/[^a-z0-9]/g, '')).filter(Boolean));
+  const fieldNames = Object.keys(fieldsToVerify || {}).filter((fieldName) => {
+    if (shouldSkipField(fieldName)) return false;
+    const fieldNorm = norm(fieldName);
+    const fieldCompact = fieldNorm.replace(/[^a-z0-9]/g, '');
+    if (skipNormSet.has(fieldNorm) || (fieldCompact && skipCompactSet.has(fieldCompact))) {
+      fieldResults.push({
+        fieldName,
+        expected: String(fieldsToVerify[fieldName] || ''),
+        actual: null,
+        recordIDMatch: true,
+        status: 'EXPECTED_MISSING',
+        reason: 'unchanged-update-field',
+      });
+      return false;
+    }
+    return true;
+  });
+  const normalizedRecordID = String(recordID || '').trim();
+  const enforceRecordID = isLikelyRecordId(normalizedRecordID);
+  const scopedRows = Array.isArray(options?.scopedRows) ? options.scopedRows : [];
+  const useScopedUpdateRows = operation === 'update' && scopedRows.length > 0;
+  const scopedExtractedFields = useScopedUpdateRows ? extractStructuredFieldsFromSnapshots(scopedRows) : [];
+
+  if (!fieldNames.length) {
+    console.log(`[AUDIT] No fields to verify`);
+    return {
+      results: fieldResults,
+      passed: true,
+      summary: {
+        passed: 0,
+        failed: 0,
+        errors: 0,
+        expectedMissing: fieldResults.filter((r) => r.status === 'EXPECTED_MISSING').length,
+        total: fieldResults.length,
+      },
+    };
+  }
+
+  console.log(`\n[AUDIT] ═══════════════════════════════════════════`);
+  console.log(`[AUDIT] FIELD-BY-FIELD INDIVIDUAL VERIFICATION`);
+  console.log(`[AUDIT] Record ID: ${recordID}`);
+  console.log(`[AUDIT] Record ID strict check: ${enforceRecordID ? 'enabled' : 'disabled (identifier is not a concrete Record ID)'}`);
+  console.log(`[AUDIT] Total Fields to Verify: ${fieldNames.length}`);
+  console.log(`[AUDIT] Searching by: VALUE (New Value column)`);
+  if (useScopedUpdateRows) {
+    console.log(`[AUDIT] Update mode scope: current operation rows only (${scopedRows.length} rows)`);
+  }
+  console.log(`[AUDIT] ═══════════════════════════════════════════\n`);
+
+  for (let i = 0; i < fieldNames.length; i++) {
+    const fieldName = fieldNames[i];
+    const expectedValue = String(fieldsToVerify[fieldName] || '');
+    const fieldNum = i + 1;
+    const isRemarksField = /^remarks?$/i.test(String(fieldName || '').trim());
+
+    // Skip empty values — nothing to search for
+    if (!expectedValue) {
+      console.log(`[AUDIT-FIELD] [${fieldNum}/${fieldNames.length}] Skipping "${fieldName}" — empty value`);
+      continue;
+    }
+
+    try {
+      console.log(`[AUDIT-FIELD] [${fieldNum}/${fieldNames.length}] Field: "${fieldName}" | Value: "${expectedValue}"`);
+
+      if (useScopedUpdateRows) {
+        const expectedNorm = normalizeComparableValue(expectedValue);
+        const fieldCandidates = scopedExtractedFields.filter((entry) => norm(entry.fieldName) === norm(fieldName));
+
+        if (!fieldCandidates.length) {
+          const reason = `No scoped update row found for field "${fieldName}"`;
+          console.warn(`[AUDIT-FIELD]   ✗ FAIL: ${reason}`);
+          fieldResults.push({ fieldName, expected: expectedValue, actual: null, recordIDMatch: true, status: 'FAIL', reason });
+          continue;
+        }
+
+        const exactCandidate = fieldCandidates.find((entry) => normalizeComparableValue(entry.newValue) === expectedNorm);
+        if (exactCandidate) {
+          console.log(`[AUDIT-FIELD]   ✓ PASS | Scoped field match in current update rows`);
+          fieldResults.push({
+            fieldName,
+            expected: expectedValue,
+            actual: exactCandidate.newValue,
+            recordIDMatch: true,
+            status: 'PASS',
+            reason: null,
+          });
+        } else {
+          const actualValues = fieldCandidates.map((entry) => entry.newValue).filter(Boolean);
+          const reason = `Expected "${expectedValue}" but scoped update rows contain "${actualValues.join(' | ') || '(empty)'}"`;
+          console.warn(`[AUDIT-FIELD]   ✗ FAIL: ${reason}`);
+          fieldResults.push({
+            fieldName,
+            expected: expectedValue,
+            actual: actualValues.join(' | '),
+            recordIDMatch: true,
+            status: 'FAIL',
+            reason,
+          });
+        }
+        continue;
+      }
+
+      // Step 1: Clear previous search
+      await fillAuditSearch(reportContext, '').catch(() => {});
+      await safeWait(reportContext, 500);
+
+      // Step 2: Search by VALUE. For checkbox/multi-select fields, try the full
+      // value first, then fall back to individual selected tokens.
+      const searchCandidates = buildSearchCandidates(expectedValue);
+      let searchOk = false;
+      let allRows = [];
+      let matchedSearchValue = '';
+
+      for (const candidate of searchCandidates) {
+        searchOk = await fillAuditSearch(reportContext, candidate).catch(() => false);
+        if (!searchOk) continue;
+
+        await waitForRowsToLoad(reportContext, AUDIT_ROW_SELECTOR, 10000);
+        await safeWait(reportContext, 500);
+
+        allRows = await collectVisibleRows(reportContext, 50);
+        if (allRows.length > 0) {
+          matchedSearchValue = candidate;
+          break;
+        }
+      }
+
+      if (!searchOk || allRows.length === 0) {
+        console.warn(`[AUDIT-FIELD]   ✗ FAIL: Could not find audit rows for value "${expectedValue}"`);
+        fieldResults.push({ fieldName, expected: expectedValue, actual: null, recordIDMatch: false, status: 'FAIL', reason: 'Search input failed' });
+        continue;
+      }
+
+      // Step 3: Collect filtered rows
+      console.log(`[AUDIT-FIELD]   Search term used: "${matchedSearchValue}"`);
+      console.log(`[AUDIT-FIELD]   Found ${allRows.length} row(s) after value search`);
+
+      if (allRows.length === 0) {
+        console.warn(`[AUDIT-FIELD]   ✗ FAIL: Value "${expectedValue}" not found in audit trail`);
+        fieldResults.push({ fieldName, expected: expectedValue, actual: null, recordIDMatch: false, status: 'FAIL', reason: `Value not found in audit trail` });
+        continue;
+      }
+
+      // Step 4: Extract structured data from rows
+      const extractedFields = await extractStructuredFieldsFromRows(reportContext, allRows.slice(0, 10));
+
+      // Step 5: Find a row where:
+      //   (a) New Value matches the expected value
+      //   (b) Field Name matches the expected field name
+      //   (c) Record ID is in the row text
+      let matchedRow = null;
+      let matchedExtracted = null;
+
+      for (let ri = 0; ri < allRows.length; ri++) {
+        const rowText = allRows[ri]?.text || '';
+        const rowRecordIDMatch = enforceRecordID ? includesNormalized(rowText, normalizedRecordID) : true;
+        const extracted = extractedFields[ri];
+
+        if (!extracted) continue;
+
+        const newValueMatch = normalizeComparableValue(extracted.newValue) === normalizeComparableValue(expectedValue);
+        const fieldNameMatch = norm(extracted.fieldName) === norm(fieldName);
+        const rowContainsRemarksValue = isRemarksField && norm(rowText).includes(norm(expectedValue));
+
+        if (newValueMatch && fieldNameMatch && rowRecordIDMatch) {
+          matchedRow = allRows[ri];
+          matchedExtracted = extracted;
+          break;
+        }
+
+        if (rowContainsRemarksValue && rowRecordIDMatch) {
+          matchedRow = allRows[ri];
+          matchedExtracted = {
+            ...extracted,
+            fieldName,
+            newValue: extracted.newValue && normalizeComparableValue(extracted.newValue) === normalizeComparableValue(expectedValue)
+              ? extracted.newValue
+              : expectedValue,
+          };
+          break;
+        }
+
+        // Relax: value matches + record ID, even if field name differs (log as warning not fail)
+        if (newValueMatch && rowRecordIDMatch && !matchedRow) {
+          matchedRow = allRows[ri];
+          matchedExtracted = extracted;
+          // Don't break — keep looking for an exact field name match
+        }
+      }
+
+      if (!matchedExtracted) {
+        // Check if value exists but wrong record ID
+        const valueExistsElsewhere = extractedFields.some((f) => normalizeComparableValue(f.newValue) === normalizeComparableValue(expectedValue));
+        const reason = valueExistsElsewhere
+          ? (enforceRecordID
+            ? `Value found but Record ID "${normalizedRecordID}" not in row`
+            : `Value found but no exact field-name row matched for "${fieldName}"`)
+          : `No row with New Value = "${expectedValue}" and Field Name = "${fieldName}"`;
+        console.warn(`[AUDIT-FIELD]   ✗ FAIL: ${reason}`);
+        console.log(`[AUDIT-FIELD]   Rows found: ${extractedFields.map((f) => `"${f.fieldName}"="${f.newValue}"`).join(', ')}`);
+        fieldResults.push({ fieldName, expected: expectedValue, actual: null, recordIDMatch: false, status: 'FAIL', reason });
+        continue;
+      }
+
+      const actualFieldName = matchedExtracted.fieldName;
+      const actualValue = matchedExtracted.newValue;
+      const rowText = matchedRow?.text || '';
+      const recordIDMatch = enforceRecordID ? includesNormalized(rowText, normalizedRecordID) : true;
+      const fieldNameMatch = norm(actualFieldName) === norm(fieldName);
+
+      if (recordIDMatch && fieldNameMatch) {
+        console.log(`[AUDIT-FIELD]   ✓ PASS | RecordID: ✓ | FieldName: "${actualFieldName}" ✓ | Value: "${actualValue}" ✓\n`);
+        fieldResults.push({ fieldName, expected: expectedValue, actual: actualValue, recordIDMatch: true, status: 'PASS', reason: null });
+      } else {
+        const reasons = [];
+        if (enforceRecordID && !recordIDMatch) reasons.push(`Record ID "${normalizedRecordID}" not found in row`);
+        if (!fieldNameMatch) reasons.push(`Field name: expected "${fieldName}" but found "${actualFieldName}"`);
+        console.warn(`[AUDIT-FIELD]   ✗ FAIL | ${reasons.join(' | ')}\n`);
+        fieldResults.push({ fieldName, expected: expectedValue, actual: actualValue, recordIDMatch, status: 'FAIL', reason: reasons.join('; ') });
+      }
+
+    } catch (err) {
+      console.warn(`[AUDIT-FIELD]   ✗ ERROR: ${err?.message || String(err)}\n`);
+      fieldResults.push({ fieldName, expected: expectedValue, actual: null, recordIDMatch: false, status: 'ERROR', reason: err?.message || String(err) });
+    }
+  }
+
+  // Clear search after all fields done
+  if (!useScopedUpdateRows) {
+    await fillAuditSearch(reportContext, '').catch(() => {});
+  }
+
+  // Summary
+  const passed = fieldResults.filter((r) => r.status === 'PASS').length;
+  const failed = fieldResults.filter((r) => r.status === 'FAIL').length;
+  const errors = fieldResults.filter((r) => r.status === 'ERROR').length;
+  const expectedMissing = fieldResults.filter((r) => r.status === 'EXPECTED_MISSING').length;
+  const totalVerified = passed + failed + errors;
+
+  console.log(`\n[AUDIT] ═══ FINAL SUMMARY ═══`);
+  console.log(`[AUDIT] Total Fields Verified: ${totalVerified}/${fieldNames.length}`);
+  console.log(`[AUDIT] ✓ PASSED: ${passed}`);
+  console.log(`[AUDIT] ✗ FAILED: ${failed}`);
+  console.log(`[AUDIT] ⚠ ERRORS: ${errors}`);
+  console.log(`[AUDIT] ? EXPECTED MISSING: ${expectedMissing}`);
+  console.log(`[AUDIT] ═══════════════════════\n`);
+
+  if (passed > 0) {
+    const passedFields = fieldResults.filter((r) => r.status === 'PASS').map((r) => r.fieldName);
+    console.log(`[AUDIT] ✓ PASSED fields: ${passedFields.join(', ')}`);
+  }
+
+  if (failed > 0) {
+    const failedFields = fieldResults.filter((r) => r.status === 'FAIL').map((r) => r.fieldName);
+    console.log(`[AUDIT] ✗ FAILED fields: ${failedFields.join(', ')}`);
+  }
+
+  if (errors > 0) {
+    const errorFields = fieldResults.filter((r) => r.status === 'ERROR').map((r) => r.fieldName);
+    console.log(`[AUDIT] ⚠ ERROR fields: ${errorFields.join(', ')}`);
+  }
+
+  if (expectedMissing > 0) {
+    const expectedMissingFields = fieldResults.filter((r) => r.status === 'EXPECTED_MISSING').map((r) => r.fieldName);
+    console.log(`[AUDIT] ? EXPECTED MISSING fields: ${expectedMissingFields.join(', ')}`);
+  }
+
+  return {
+    results: fieldResults,
+    passed: failed === 0 && errors === 0,
+    summary: { passed, failed, errors, expectedMissing, total: totalVerified },
+  };
+}
+
 
 async function verifyAuditTrailEntry(page, options) {
   const strict = options?.strict === true;
@@ -1587,13 +2199,18 @@ async function verifyAuditTrailEntry(page, options) {
       matchedRow: '',
       matched: [],
       fieldMatches: [],
+      rowSnapshots: [],
+      statusColumn: { found: false, index: -1, header: '' },
+      reasonColumn: { found: false, index: -1, header: '' },
+      operationRowSnapshots: [],
+      operationRowRange: { startIndex: -1, endIndex: -1, total: 0 },
       reason: message,
     };
   }
 
-  // Recovery: If we matched a row but didn't have a recordID, try to extract it from the row text
-  // and re-filter to get all related rows (e.g. Remarks)
-  if (row && !expected.recordID) {
+  // Recovery: if recordID is missing or appears to be a non-ID label/value,
+  // extract the actual Record ID from matched row text and re-filter.
+  if (row && !isLikelyRecordId(expected.recordID)) {
     const ridMatch = row.text.match(/[A-Z]+-\d+-\d+/i);
     if (ridMatch) {
       const recoveredID = ridMatch[0];
@@ -1617,6 +2234,19 @@ async function verifyAuditTrailEntry(page, options) {
     }
   }
 
+  const statusSnapshot = await collectVisibleRowsWithStatusSnapshot(reportContext, 120)
+    .catch(() => ({ rows: [], statusColumnFound: false, statusColumnIndex: -1, statusHeader: '', reasonColumnFound: false, reasonColumnIndex: -1, reasonHeader: '' }));
+  const operationRowSnapshots = filterOperationScopedRowSnapshots(statusSnapshot.rows || [], expected);
+  const operationIndexes = operationRowSnapshots
+    .map((entry) => Number(entry?.index))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  const operationRowRange = {
+    startIndex: operationIndexes.length ? operationIndexes[0] : -1,
+    endIndex: operationIndexes.length ? operationIndexes[operationIndexes.length - 1] : -1,
+    total: operationRowSnapshots.length,
+  };
+
   let detailOpened = false;
   let verificationSource = 'row';
   let verificationText = row.text;
@@ -1631,9 +2261,26 @@ async function verifyAuditTrailEntry(page, options) {
     auditDetailFields = details.fields;
   } else {
     // If no detail overlay or it has no fields, try to collect all related rows from the main table
-    // (for audit trails where each row is a field change)
-    const allMatchingRows = findAllMatchingRows(await collectVisibleRows(reportContext, 100), expected);
+    // (for audit trails where each row is a field change - one row per field)
+    
+    // Step 1: Collect initial matching rows
+    const initialRows = await collectVisibleRows(reportContext, 100);
+    let allMatchingRows = findAllMatchingRows(initialRows, expected);
+    
+    // Step 2: If we have a Record ID, search specifically for it to ensure we get ALL field entries
+    if (isLikelyRecordId(expected.recordID) && allMatchingRows.length < 20) {
+      console.log(`[AUDIT] Searching specifically for Record ID: ${expected.recordID}`);
+      const recordIdSearch = await fillAuditSearch(reportContext, expected.recordID).catch(() => false);
+      if (recordIdSearch) {
+        await waitForRowsToLoad(reportContext, AUDIT_ROW_SELECTOR, 10000);
+        const recordSpecificRows = await collectVisibleRows(reportContext, 250); // Collect more rows for thorough search
+        allMatchingRows = findAllMatchingRows(recordSpecificRows, expected);
+        console.log(`[AUDIT] After Record ID search: ${allMatchingRows.length} rows found`);
+      }
+    }
+    
     if (allMatchingRows.length >= 1) {
+       console.log(`[AUDIT] Extracting field entries from ${allMatchingRows.length} audit rows...`);
        auditDetailFields = await extractStructuredFieldsFromRows(reportContext, allMatchingRows);
        verificationSource = allMatchingRows.length > 1 ? 'multi-row' : 'row';
        verificationText = allMatchingRows.map(r => r.text).join(' | ');
@@ -1646,10 +2293,28 @@ async function verifyAuditTrailEntry(page, options) {
   }
 
   if (auditDetailFields.length > 0) {
-    console.log(`[AUDIT] Extracted ${auditDetailFields.length} fields from ${verificationSource}`);
-    for (const f of auditDetailFields) {
-      console.log(`[AUDIT]   Field: "${f.fieldName}" old="${f.oldValue}" new="${f.newValue}"`);
+    console.log(`\n[AUDIT] ═══ EXTRACTING ${auditDetailFields.length} FIELD ENTRIES ═══`);
+    for (let i = 0; i < auditDetailFields.length; i++) {
+      const f = auditDetailFields[i];
+      console.log(`[AUDIT] [${i + 1}/${auditDetailFields.length}] Field: "${f.fieldName}"`);
+      console.log(`[AUDIT]          Old Value: "${f.oldValue}"`);
+      console.log(`[AUDIT]          New Value: "${f.newValue}"`);
     }
+    console.log(`[AUDIT] ════════════════════════════════════════\n`);
+  }
+
+  const snapshotDerivedFields = extractStructuredFieldsFromSnapshots(operationRowSnapshots);
+  if (snapshotDerivedFields.length > 0) {
+    const byKey = new Map();
+    const normKey = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    for (const field of [...auditDetailFields, ...snapshotDerivedFields]) {
+      const k = normKey(field?.fieldName);
+      if (!k) continue;
+      const prev = byKey.get(k);
+      const richness = (f) => (String(f?.newValue || '').trim() ? 2 : 0) + (String(f?.oldValue || '').trim() ? 1 : 0) + (String(f?.timestamp || '').trim() ? 1 : 0);
+      if (!prev || richness(field) >= richness(prev)) byKey.set(k, field);
+    }
+    auditDetailFields = Array.from(byKey.values());
   }
 
   // Always require field evidence verification (timestamp + field values)
@@ -1665,22 +2330,53 @@ async function verifyAuditTrailEntry(page, options) {
   let screenshotPath = '';
 
   if (auditDetailFields.length > 0 && Object.keys(dashboardAuditTrail).length > 0) {
-    comparison = compareAuditWithDashboard(auditDetailFields, dashboardAuditTrail, expected.operation);
-
-    // Some report variants expose only changed fields in row/grid view.
-    // If we have at least one positive match and no hard mismatches, treat missing fields as partial coverage.
-    const onlyNotFoundGaps = comparison.mismatches.length === 0 && comparison.notFoundInAudit.length > 0;
-    const rowLevelEvidence = verificationSource === 'row' || verificationSource === 'multi-row';
-    if (onlyNotFoundGaps && rowLevelEvidence && comparison.matchCount > 0) {
-      console.warn('[AUDIT] Partial field coverage: unmatched dashboard fields were not present in row-level audit view; not failing comparison.');
-      comparison = {
-        ...comparison,
-        partialCoverage: true,
-        passed: true,
-      };
-    }
+    console.log(`\n[AUDIT] ═══ FIELD VERIFICATION ═══`);
+    console.log(`[AUDIT] Audit Trail has: ${auditDetailFields.length} field entries`);
+    console.log(`[AUDIT] Expected fields to verify: ${Object.keys(dashboardAuditTrail).length}`);
+    console.log(`[AUDIT] Expected field names: ${Object.keys(dashboardAuditTrail).join(', ')}`);
+    console.log(`[AUDIT] ════════════════════════════════\n`);
+    
+    comparison = compareAuditWithDashboard(auditDetailFields, dashboardAuditTrail, expected.operation, {
+      skipFields: options?.skipFields || [],
+    });
 
     console.log(`[AUDIT] Comparison: ${comparison.matchCount} matched, ${comparison.mismatchCount} mismatches (of ${comparison.totalChecked} checked)`);
+
+    // ──── DETAILED SINGLE-FIELD VALIDATION REPORT ────────────────────────────────
+    if (comparison.fieldValidationResults && comparison.fieldValidationResults.length > 0) {
+      console.log('\n[AUDIT] ═══ FIELD-BY-FIELD VALIDATION REPORT ═══');
+      for (const fieldResult of comparison.fieldValidationResults) {
+        const statusSymbol = fieldResult.status === 'PASS' ? '✓' : fieldResult.status === 'MISMATCH' ? '✗' : '?';
+        console.log(`[AUDIT] ${statusSymbol} Field: "${fieldResult.fieldName}"`);
+        console.log(`[AUDIT]    Status: ${fieldResult.status}`);
+        console.log(`[AUDIT]    Expected: "${fieldResult.expected}"`);
+        if (fieldResult.actual !== null) {
+          console.log(`[AUDIT]    Actual: "${fieldResult.actual}"`);
+        }
+        if (fieldResult.auditFieldName) {
+          console.log(`[AUDIT]    Audit Field: "${fieldResult.auditFieldName}"`);
+        }
+        if (fieldResult.error) {
+          console.log(`[AUDIT]    Error: ${fieldResult.error}`);
+        }
+      }
+      console.log('[AUDIT] ════════════════════════════════════════\n');
+    }
+
+    // ──── SUMMARY ────────────────────────────────────────────────────────────────
+    if (comparison.fieldValidationSummary) {
+      const summary = comparison.fieldValidationSummary;
+      console.log('[AUDIT] VALIDATION SUMMARY:');
+      if (summary.passedFields.length > 0) {
+        console.log(`[AUDIT]   ✓ PASSED (${summary.passedFields.length}): ${summary.passedFields.join(', ')}`);
+      }
+      if (summary.failedFields.length > 0) {
+        console.warn(`[AUDIT]   ✗ FAILED (${summary.failedFields.length}): ${summary.failedFields.join(', ')}`);
+      }
+      if (summary.missingFields.length > 0) {
+        console.warn(`[AUDIT]   ? MISSING (${summary.missingFields.length}): ${summary.missingFields.join(', ')}`);
+      }
+    }
 
     if (comparison.mismatches.length > 0) {
       console.warn('[AUDIT] MISMATCHES between dashboard and audit trail:');
@@ -1694,13 +2390,6 @@ async function verifyAuditTrailEntry(page, options) {
         console.warn(`[AUDIT]   Field: "${m.field}" expected="${m.expected}"`);
       }
     }
-    if ((comparison.expectedMissingInAudit || []).length > 0) {
-      console.log('[AUDIT] Expected missing fields (unchanged on update):');
-      for (const m of comparison.expectedMissingInAudit) {
-        console.log(`[AUDIT]   Field: "${m.field}" expected="${m.expected}" (${m.reason})`);
-      }
-    }
-
     // Capture screenshot if there are mismatches
     if (!comparison.passed) {
       screenshotPath = await captureAuditScreenshot(reportContext, expected.masterName, expected.operation, 'audit-mismatch').catch(() => '');
@@ -1709,8 +2398,22 @@ async function verifyAuditTrailEntry(page, options) {
       }
     }
   } else if (Object.keys(dashboardAuditTrail).length > 0 && auditDetailFields.length === 0) {
-    // Could not extract structured fields - fall back to text comparison, capture screenshot
+    // Strict mode: if expected dashboard fields exist but audit fields cannot be extracted, fail comparison.
     console.warn('[AUDIT] Could not extract structured fields from audit detail for comparison');
+    comparison = {
+      totalChecked: Object.keys(dashboardAuditTrail).length,
+      matchCount: 0,
+      mismatchCount: Object.keys(dashboardAuditTrail).length,
+      matches: [],
+      mismatches: [],
+      notFoundInAudit: Object.entries(dashboardAuditTrail).map(([field, expectedValue]) => ({
+        field,
+        expected: String(expectedValue || ''),
+      })),
+      auditFieldCount: 0,
+      passed: false,
+      reason: 'Structured audit fields could not be extracted',
+    };
     screenshotPath = await captureAuditScreenshot(reportContext, expected.masterName, expected.operation, 'audit-no-fields').catch(() => '');
   }
 
@@ -1727,8 +2430,47 @@ async function verifyAuditTrailEntry(page, options) {
     await closeAuditDetails(reportContext, details.overlay).catch(() => {});
   }
 
+  // ── FIELD-BY-FIELD INDIVIDUAL VERIFICATION on the already-open reportContext ──
+  // This MUST run here while reportContext (popup/tab) is still open, NOT from the
+  // caller with the main page object.
+  let fieldByFieldResults = null;
+  if (Object.keys(dashboardAuditTrail).length > 0) {
+    const recordID = expected.recordID || expected.identifiers[0] || '';
+    fieldByFieldResults = await verifyEachFieldIndividually(reportContext, recordID, dashboardAuditTrail, {
+      operation: expected.operation,
+      skipFields: options?.skipFields || [],
+      scopedRows: expected.operation === 'update' ? operationRowSnapshots : [],
+    });
+  }
+
+  const expectsFieldComparison = Object.keys(dashboardAuditTrail || {}).length > 0;
+  const fieldComparisonPassed = !expectsFieldComparison || (
+    fieldByFieldResults ? fieldByFieldResults.passed : (comparison && comparison.passed === true)
+  );
+  const verified = analysis.missing.length === 0 && fieldComparisonPassed;
+
+  if (strict && !verified) {
+    const failureReasons = [];
+    if (analysis.missing.length > 0) {
+      failureReasons.push(`missing audit evidence: ${analysis.missing.join(', ')}`);
+    }
+    if (expectsFieldComparison && !fieldComparisonPassed) {
+      const failedFields = fieldByFieldResults?.results?.filter((r) => r.status !== 'PASS').map((r) => r.fieldName) || [];
+      failureReasons.push(`field verification failed: ${failedFields.join(', ') || 'see above'}`);
+    }
+    throw new Error(`Strict audit verification failed for ${expected.masterDisplayName || expected.masterName} (${expected.operation}): ${failureReasons.join(' | ')}`);
+  }
+
+  const fieldValidationResults = fieldByFieldResults?.results || comparison?.fieldValidationResults || [];
+  const fieldValidationPassed = fieldValidationResults.filter((r) => String(r?.status || '').toUpperCase() === 'PASS');
+  const fieldValidationExpectedMissing = fieldValidationResults.filter((r) => String(r?.status || '').toUpperCase() === 'EXPECTED_MISSING');
+  const fieldValidationFailed = fieldValidationResults.filter((r) => {
+    const status = String(r?.status || '').toUpperCase();
+    return status !== 'PASS' && status !== 'EXPECTED_MISSING';
+  });
+
   return {
-    verified: analysis.missing.length === 0,
+    verified,
     source: verificationSource,
     detailOpened,
     queryUsed: row.queryUsed || '',
@@ -1736,13 +2478,51 @@ async function verifyAuditTrailEntry(page, options) {
     matched: analysis.matched,
     missing: analysis.missing,
     fieldMatches: analysis.fieldMatches,
+    rowSnapshots: statusSnapshot.rows || [],
+    operationRowSnapshots,
+    operationRowRange,
+    statusColumn: {
+      found: !!statusSnapshot.statusColumnFound,
+      index: Number.isInteger(statusSnapshot.statusColumnIndex) ? statusSnapshot.statusColumnIndex : -1,
+      header: statusSnapshot.statusHeader || '',
+    },
+    reasonColumn: {
+      found: !!statusSnapshot.reasonColumnFound,
+      index: Number.isInteger(statusSnapshot.reasonColumnIndex) ? statusSnapshot.reasonColumnIndex : -1,
+      header: statusSnapshot.reasonHeader || '',
+    },
     comparison,
     screenshotPath,
+    fieldByFieldResults,
+    // ──── FIELD VALIDATION RESULTS (from field-by-field) ────
+    fieldValidationResults,
+    fieldValidationSummary: {
+      total: fieldValidationResults.length,
+      passed: fieldValidationPassed.length,
+      failed: fieldValidationFailed.length,
+      expectedMissing: fieldValidationExpectedMissing.length,
+      passedFields: fieldValidationPassed.map((r) => r.fieldName),
+      failedFields: fieldValidationFailed.map((r) => r.fieldName),
+      missingFields: [],
+      expectedMissingFields: fieldValidationExpectedMissing.map((r) => r.fieldName),
+    },
   };
 }
 
 module.exports = {
   formatMasterDisplayName,
   inferPrimaryRecordIdentifier,
+  // Backward-compatible alias used by older scripts.
+  verifyAuditTrail: verifyAuditTrailEntry,
   verifyAuditTrailEntry,
+  verifyEachFieldIndividually,
+  // Exported for teams that consume lower-level audit helpers directly.
+  openAuditTrailPage,
+  navigateAndSearchMasterAudit,
+  fillAuditSearch,
+  compareAuditWithDashboard,
+  analyzeAuditText,
+  collectVisibleRowsWithStatusSnapshot,
+  filterOperationScopedRowSnapshots,
+  extractStructuredFieldsFromSnapshots,
 };

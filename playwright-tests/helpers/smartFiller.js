@@ -8,13 +8,33 @@
 
 const fs = require('fs');
 const path = require('path');
+const { randomBytes, randomInt, randomUUID } = require('crypto');
 
 // Unique stamp per script run — appended to text/name/code values to prevent duplicates.
-let RUN_STAMP = Date.now().toString(36).toUpperCase().slice(-5);
+let RUN_STAMP = createRunStamp();
+
+function createRunStamp() {
+  if (typeof randomUUID === 'function') {
+    return randomUUID().replace(/-/g, '').toUpperCase().slice(0, 16);
+  }
+  return randomBytes(16).toString('hex').toUpperCase().slice(0, 16);
+}
 /** Call this to generate a new unique stamp (e.g. after a duplicate-record rejection). */
 function refreshStamp() {
-  RUN_STAMP = Date.now().toString(36).toUpperCase().slice(-5);
+  RUN_STAMP = createRunStamp();
   return RUN_STAMP;
+}
+
+function guidToken(length = 16) {
+  return createRunStamp().slice(0, length);
+}
+
+function guidDigits(length = 10) {
+  let digits = '';
+  while (digits.length < length) {
+    digits += BigInt(`0x${guidToken(16)}`).toString().replace(/\D/g, '');
+  }
+  return digits.slice(0, length);
 }
 const { collectStableFormFields } = require('./formDiscovery');
 const { fillField, readFieldValue, waitForDependentFieldsToPopulate } = require('./formFiller');
@@ -83,29 +103,29 @@ const POOL = {
   ],
   shortName: () => {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const base = Array.from({ length: 3 }, () => letters[Math.floor(Math.random() * 26)]).join('');
-    return `${base}${RUN_STAMP}`;
+    const base = Array.from({ length: 3 }, () => letters[randomInt(0, 26)]).join('');
+    return `${base}${guidToken(12)}`;
   },
   name: () => {
     const firstNames = ['Arjun', 'Priya', 'Rahul', 'Neha', 'Suresh', 'Pooja', 'Amit', 'Deepa', 'Rajesh', 'Meera', 'Vikram', 'Anjali'];
     const lastNames = ['Sharma', 'Patel', 'Shah', 'Kumar', 'Singh', 'Mehta', 'Joshi', 'Verma', 'Nair', 'Gupta', 'Desai', 'Bhat'];
-    const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
-    const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
-    return `${fn} ${ln} ${RUN_STAMP}`;
+    const fn = firstNames[randomInt(0, firstNames.length)];
+    const ln = lastNames[randomInt(0, lastNames.length)];
+    return `${fn} ${ln} ${guidToken(16)}`;
   },
   email: () => {
     const users = ['qa', 'test', 'validation', 'audit', 'analyst'];
     const domains = ['pharmatest.in', 'qualitycheck.com', 'pharmaqa.org'];
-    const user = users[Math.floor(Math.random() * users.length)];
-    const domain = domains[Math.floor(Math.random() * domains.length)];
-    return `${user}${RUN_STAMP.toLowerCase()}@${domain}`;
+    const user = users[randomInt(0, users.length)];
+    const domain = domains[randomInt(0, domains.length)];
+    return `${user}${guidToken(16).toLowerCase()}@${domain}`;
   },
-  phone: () => String(Math.floor(7000000000 + Math.random() * 2999999999)),
-  pincode: () => String(Math.floor(100000 + Math.random() * 899999)),
+  phone: () => `9${guidDigits(9)}`,
+  pincode: () => String(100000 + Number(guidDigits(6)) % 900000),
   address: () => {
     const streets = ['Industrial Estate', 'Pharma Park', 'Science Park Road', 'Lab Street', 'Research Avenue'];
     const areas = ['Ahmedabad', 'Pune', 'Bangalore', 'Hyderabad', 'Goa', 'Indore'];
-    return `${Math.floor(Math.random() * 999) + 1}, ${streets[Math.floor(Math.random() * streets.length)]}, ${areas[Math.floor(Math.random() * areas.length)]}`;
+    return `${randomInt(1, 1000)}, ${streets[randomInt(0, streets.length)]}, ${areas[randomInt(0, areas.length)]}`;
   },
   description: () => {
     const descs = [
@@ -117,7 +137,7 @@ const POOL = {
       'Manufacturing batch documentation',
       'Clinical trial related batch record',
     ];
-    return descs[Math.floor(Math.random() * descs.length)];
+    return `${descs[randomInt(0, descs.length)]} ${guidToken(8)}`;
   },
 };
 
@@ -152,7 +172,8 @@ function getMasterDependencyConfig(masterName) {
 
 function pick(source) {
   if (typeof source === 'function') return source();
-  return source[Math.floor(Math.random() * source.length)];
+  if (!Array.isArray(source) || source.length === 0) return null;
+  return source[randomInt(0, source.length)];
 }
 
 function uniquePick(source, existingValues, blocklist = new Set()) {
@@ -173,14 +194,15 @@ function normalizeLabel(text) {
 }
 
 function makeUsername() {
-  const base = ['qa', 'user', 'admin', 'test'][Math.floor(Math.random() * 4)];
-  return `${base}${RUN_STAMP}`;
+  const bases = ['qa', 'user', 'admin', 'test'];
+  const base = bases[randomInt(0, bases.length)];
+  return `${base}${guidToken(16)}`;
 }
 
 function makePassword() {
-  const upper = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-  const lower = String.fromCharCode(97 + Math.floor(Math.random() * 26));
-  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  const upper = String.fromCharCode(65 + randomInt(0, 26));
+  const lower = String.fromCharCode(97 + randomInt(0, 26));
+  const digits = String(1000 + Number(guidDigits(4)) % 9000);
   return `Qa${upper}${lower}${digits}`;
 }
 
@@ -293,17 +315,41 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
 
   if (elementType === 'number' || elementType === 'decimal') {
     if (/pin|zip|postal/.test(lower)) return pick(POOL.pincode);
-    if (/phone|mobile|contact|fax/.test(lower)) return String(Math.floor(7000000000 + Math.random() * 2999999999));
-    if (/batch|lot/.test(lower)) return String(Math.floor(Math.random() * 999000) + 1000).padStart(6, '0');
-    if (/amount|price|cost|salary|budget|revenue/.test(lower)) return String(Math.floor(Math.random() * 500000) + 1000);
-    if (/age|weight|height|dose|dosage/.test(lower)) return String(Math.floor(Math.random() * 100) + 10);
-    if (/quantity|qty|count|strength|potency/.test(lower)) return String(Math.floor(Math.random() * 1000) + 100);
-    if (/percentage|percent|purity|assay|yield|recovery/.test(lower)) return String(Math.floor(Math.random() * 10) + 90);
+    if (/phone|mobile|contact|fax/.test(lower)) return pick(POOL.phone);
+    if (/batch|lot|seq|sequence|serial|sr\.?\s*no|order.*no|priority.*no|identifier|id\b/.test(lower)) return guidDigits(10);
+    if (/amount|price|cost|salary|budget|revenue/.test(lower)) return String(1000 + Number(guidDigits(6)) % 500000);
+    if (/age|weight|height|dose|dosage/.test(lower)) return String(10 + Number(guidDigits(3)) % 100);
+    if (/quantity|qty|count|strength|potency/.test(lower)) return String(100 + Number(guidDigits(4)) % 1000);
+    if (/percentage|percent|purity|assay|yield|recovery/.test(lower)) return String(90 + Number(guidDigits(2)) % 10);
     if (/year/.test(lower)) return String(new Date().getFullYear());
-    if (/seq|sequence|serial|sr\.?\s*no|order.*no|priority.*no/.test(lower)) return String(Math.floor(Math.random() * 99) + 1);
-    return String(Math.floor(Math.random() * 999) + 1);
+    return guidDigits(8);
   }
 
+  // ── Specific name/code patterns FIRST (before generic pool lookups) ─────────
+  if (/location\s*name|plant\s*name/.test(lower)) return `QA Location ${guidToken(16)}`;
+  if (/site\s*name/.test(lower)) return `Ahmedabad QA Site ${guidToken(16)}`;
+  if (/app\s*name|application\s*name/.test(lower)) return `Quality Management App ${guidToken(16)}`;
+  if (/sub\s*template\s*name/.test(lower)) return `QC Sub Template ${guidToken(16)}`;
+  if (/template\s*name/.test(lower)) return `QC Template ${guidToken(16)}`;
+  if (/workflow\s*name/.test(lower)) return `Template Workflow ${guidToken(16)}`;
+  if (/location\s*code|plant\s*code|location\s*id|plant\s*id/.test(lower)) return `LC${guidToken(8)}${guidDigits(5)}`;
+  if (/site\s*code/.test(lower)) return `ST${guidToken(6)}${guidDigits(5)}`;
+  if (/app\s*code|application\s*code/.test(lower)) return String(100 + randomInt(0, 900)); // 3-digit code for 3-char max field
+  if (/template\s*code/.test(lower)) return `TP${guidToken(6)}${guidDigits(5)}`;
+  if (/workflow\s*code/.test(lower)) return `WF${guidToken(6)}${guidDigits(5)}`;
+
+  // ── Credential / contact fields ──────────────────────────────────────────────
+  if (/user ?name|login id|user id/.test(lower)) return makeUsername();
+  if (/confirm password/.test(lower)) return null;
+  if (/password|passcode/.test(lower) || elementType === 'password') return makePassword();
+  if (/first name/.test(lower)) return `${pick(['Arjun', 'Priya', 'Rahul', 'Neha', 'Suresh', 'Pooja', 'Amit', 'Deepa'])}${guidToken(12)}`;
+  if (/last name|surname/.test(lower)) return `${pick(['Sharma', 'Patel', 'Shah', 'Kumar', 'Singh', 'Mehta', 'Joshi', 'Verma', 'Nair', 'Gupta'])}${guidToken(12)}`;
+  if (/email/.test(lower) || elementType === 'email') return pick(POOL.email);
+  if (/phone|mobile|contact|fax/.test(lower) || elementType === 'tel') return pick(POOL.phone);
+  if (/pin|zip|postal/.test(lower)) return pick(POOL.pincode);
+  if (/address/.test(lower)) return `${pick(POOL.address)} ${guidToken(12)}`;
+
+  // ── Generic pool lookups (dropdowns) ─────────────────────────────────────────
   if (/country/.test(lower)) return uniquePick(POOL.country, existingValues);
   if (/time\s*zone|timezone|\btz\b/.test(lower)) return uniquePick(POOL.timeZone, existingValues);
   if (/state|province/.test(lower)) return uniquePick(POOL.state, existingValues);
@@ -312,9 +358,10 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
   if (/designation|position|title|role/.test(lower)) return uniquePick(POOL.designation, existingValues, context.invalidRoles || new Set());
   if (/employee.*type|emp.*type/.test(lower)) return uniquePick(POOL.employeeType, existingValues);
   if (/gender|sex/.test(lower)) return uniquePick(POOL.gender, existingValues);
-  if (/location/.test(lower) && !isSelectLikeType) return `QA Location ${RUN_STAMP}`;
-  if (/\bsite\b/.test(lower) && !isSelectLikeType) return `QA Site ${RUN_STAMP}`;
+  if (/location/.test(lower) && !isSelectLikeType) return `QA Location ${guidToken(16)}`;
+  if (/\bsite\b/.test(lower) && !isSelectLikeType) return `QA Site ${guidToken(16)}`;
   if (/\bsite\b/.test(lower)) return uniquePick(POOL.site, existingValues);
+  if (/\bapp\b|application/.test(lower) && !isSelectLikeType) return `Quality Management App ${guidToken(16)}`;
   if (/\bapp\b|application/.test(lower)) return uniquePick(POOL.app, existingValues);
   if (/category/.test(lower)) return uniquePick(POOL.category, existingValues);
   if (/\btype\b/.test(lower)) return uniquePick(POOL.type, existingValues);
@@ -329,26 +376,6 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
   if (/\bname\b/.test(lower) && /equipment|instrument|apparatus|machine/.test(masterLower)) {
     return uniquePick(POOL.equipment, existingValues);
   }
-  if (/user ?name|login id|user id/.test(lower)) return makeUsername();
-  if (/confirm password/.test(lower)) return null;
-  if (/password|passcode/.test(lower) || elementType === 'password') return makePassword();
-  if (/first name/.test(lower)) return pick(['Arjun', 'Priya', 'Rahul', 'Neha', 'Suresh', 'Pooja', 'Amit', 'Deepa']);
-  if (/last name|surname/.test(lower)) return pick(['Sharma', 'Patel', 'Shah', 'Kumar', 'Singh', 'Mehta', 'Joshi', 'Verma', 'Nair', 'Gupta']);
-  if (/email/.test(lower) || elementType === 'email') return pick(POOL.email);
-  if (/phone|mobile|contact|fax/.test(lower) || elementType === 'tel') return pick(POOL.phone);
-  if (/pin|zip|postal/.test(lower)) return pick(POOL.pincode);
-  if (/address/.test(lower)) return pick(POOL.address);
-  if (/location\s*name|plant\s*name/.test(lower)) return `QA Location ${RUN_STAMP}`;
-  if (/site\s*name/.test(lower)) return `Ahmedabad QA Site ${RUN_STAMP}`;
-  if (/app\s*name|application\s*name/.test(lower)) return `Quality Management App ${RUN_STAMP}`;
-  if (/sub\s*template\s*name/.test(lower)) return `QC Sub Template ${RUN_STAMP}`;
-  if (/template\s*name/.test(lower)) return `QC Template ${RUN_STAMP}`;
-  if (/workflow\s*name/.test(lower)) return `Template Workflow ${RUN_STAMP}`;
-  if (/location\s*code|plant\s*code|location\s*id|plant\s*id/.test(lower)) return `LC${RUN_STAMP}`;
-  if (/site\s*code/.test(lower)) return `ST${RUN_STAMP}`;
-  if (/app\s*code|application\s*code/.test(lower)) return `AP${RUN_STAMP}`;
-  if (/template\s*code/.test(lower)) return `TP${RUN_STAMP}`;
-  if (/workflow\s*code/.test(lower)) return `WF${RUN_STAMP}`;
   if (/\bname\b/.test(lower)) return pick(POOL.name);
   if (/code|short/.test(lower)) return pick(POOL.shortName);
   if (/remark|note|comment|description|detail|summary|instruction/.test(lower)) return pick(POOL.description);
@@ -360,7 +387,8 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
       .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join('');
-    return `${compact} ${RUN_STAMP}`;
+    // Add both random token AND random digits for maximum uniqueness
+    return `${compact} ${guidToken(16)} ${guidDigits(6)}`;
   }
 
   return null;
@@ -615,4 +643,4 @@ async function smartFillOffcanvasForm(page, masterName, providedFields = null, o
   return auditTrail;
 }
 
-module.exports = { smartFillOffcanvasForm, resolveSmartValue, refreshStamp };
+module.exports = { smartFillOffcanvasForm, resolveSmartValue, refreshStamp, guidToken, guidDigits };

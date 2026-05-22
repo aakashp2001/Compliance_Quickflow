@@ -32,31 +32,37 @@ function randomText(length = 8) {
 
 function defaultTextByField(fieldInfo, fallback = 'QA Entry') {
   const label = String(fieldInfo?.displayName || fieldInfo?.columnToShow || fieldInfo?.id || '').toLowerCase();
-  const stamp = String(Date.now()).slice(-5);
+  // Generate highly random stamp with alphanumeric characters for uniqueness
+  const randomStamp = randomText(8) + String(Date.now()).slice(-5);
+  const randomDigits = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
 
-  if (/site\s*name/.test(label)) return `Ahmedabad QA Site ${stamp}`;
-  if (/app\s*name|application\s*name/.test(label)) return `Quality Management App ${stamp}`;
-  if (/sub\s*template\s*name/.test(label)) return `QC Sub Template ${stamp}`;
-  if (/template\s*name/.test(label)) return `QC Template ${stamp}`;
-  if (/workflow\s*name/.test(label)) return `Template Workflow ${stamp}`;
+  if (/site\s*name/.test(label)) return `Ahmedabad QA Site ${randomStamp}`;
+  if (/app\s*name|application\s*name/.test(label)) return `Quality Management App ${randomStamp}`;
+  if (/app\s*code|application\s*code/.test(label)) return String(100 + Math.floor(Math.random() * 900));
+  if (/site\s*code|location\s*code|plant\s*code/.test(label)) return `ST${randomDigits.slice(0, 5)}`;
+  if (/template\s*code|sub\s*template\s*code/.test(label)) return `TP${randomDigits.slice(0, 5)}`;
+  if (/workflow\s*code/.test(label)) return `WF${randomDigits.slice(0, 5)}`;
+  if (/sub\s*template\s*name/.test(label)) return `QC Sub Template ${randomStamp}`;
+  if (/template\s*name/.test(label)) return `QC Template ${randomStamp}`;
+  if (/workflow\s*name/.test(label)) return `Template Workflow ${randomStamp}`;
   if (/country/.test(label)) return 'India';
   if (/time\s*zone|timezone|\btz\b/.test(label)) return 'India ( +05:30 )';
-  if (/address/.test(label)) return '42, Pharma Park Road, Ahmedabad';
+  if (/address/.test(label)) return `42, Pharma Park Road, Ahmedabad ${randomStamp}`;
   if (/city/.test(label)) return 'Ahmedabad';
   if (/state/.test(label)) return 'Gujarat';
-  if (/pin|zip|postal/.test(label)) return '380015';
-  if (/email/.test(label)) return `qa${stamp}@pharmatest.in`;
+  if (/pin|zip|postal/.test(label)) return `380${randomDigits.slice(0, 3)}`;
+  if (/email/.test(label)) return `qa${randomDigits}@pharmatest.in`;
   if (/phone|mobile|contact/.test(label)) return `9${String(100000000 + Math.floor(Math.random() * 899999999)).padStart(9, '0')}`;
-  if (/code|short/.test(label)) return `${randomText(2)}${stamp}`;
+  if (/code|short/.test(label)) return `${randomText(3)}${randomDigits.slice(0, 4)}`;
   if (/remark|note|comment|description|detail|summary|instruction/.test(label)) {
-    return 'Created for QA workflow validation.';
+    return `Created for QA workflow validation. ${randomStamp}`;
   }
 
   const cleaned = String(fieldInfo?.displayName || fallback)
     .replace(/[^a-zA-Z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return `${cleaned || fallback} ${stamp}`;
+  return `${cleaned || fallback} ${randomStamp}`;
 }
 
 function clampValueToField(fieldInfo, value) {

@@ -8,6 +8,188 @@ import {
   saveDependencyConfig,
   validateMandatoryFields,
 } from './api/client';
+import MultiSelect from './components/MultiSelect';
+
+function getMasterName(master) {
+  if (typeof master === 'string') return master.trim();
+  if (!master || typeof master !== 'object') return '';
+  return String(master.name || master.masterName || master.value || master.id || '').trim();
+}
+
+function getMasterDisplayName(master) {
+  if (typeof master === 'string') return master.trim();
+  if (!master || typeof master !== 'object') return '';
+  const name = getMasterName(master);
+  return String(master.displayName || master.display || master.label || name).trim();
+}
+
+function normalizeMasters(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .map((master) => {
+      const name = getMasterName(master);
+      const displayName = getMasterDisplayName(master);
+      if (!name) return null;
+      return {
+        ...((master && typeof master === 'object') ? master : {}),
+        name,
+        displayName: displayName || name,
+      };
+    })
+    .filter((master) => {
+      if (!master || !master.name) return false;
+      const key = master.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getAuditRowsFromVerification(auditVerification) {
+  if (!auditVerification || typeof auditVerification !== 'object') return [];
+  // Primary source: verifyAuditTrailEntry() normalized payload.
+  // Fallbacks support previously saved result shapes.
+  const rows = [
+    asArray(auditVerification.fieldValidationResults),
+    asArray(auditVerification.fieldByFieldResults?.results),
+    asArray(auditVerification.comparison?.fieldValidationResults),
+  ].find((sourceRows) => sourceRows.length > 0) || [];
+
+  if (rows.length > 0) {
+    const seen = new Set();
+    return rows.filter((row) => {
+      const key = [
+        row?.fieldName,
+        row?.expected,
+        row?.actual,
+        row?.status,
+      ].map((part) => String(part ?? '')).join('|');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  return [
+    ...asArray(auditVerification.comparison?.mismatches).map((item) => ({
+      fieldName: item.field,
+      expected: item.expected,
+      actual: item.actual,
+      status: 'MISMATCH',
+      error: item.error || '',
+    })),
+    ...asArray(auditVerification.comparison?.notFoundInAudit).map((item) => ({
+      fieldName: item.field,
+      expected: item.expected,
+      actual: null,
+      status: 'NOT_FOUND',
+      error: 'Field not found in audit trail',
+    })),
+  ];
+}
+
+function getAuditSummary(auditVerification, rows) {
+  const fieldValidationSummary = auditVerification?.fieldValidationSummary;
+  if (fieldValidationSummary && typeof fieldValidationSummary === 'object') {
+    return {
+      passed: Number(fieldValidationSummary.passed ?? fieldValidationSummary.passedFields?.length ?? 0),
+      total: Number(fieldValidationSummary.total ?? rows.length ?? 0),
+    };
+  }
+
+  const summary = auditVerification?.fieldByFieldResults?.summary;
+  if (summary && typeof summary === 'object') {
+    return {
+      passed: Number(summary.passed || 0),
+      total: Number(summary.total || rows.length || 0),
+    };
+  }
+
+  const comparison = auditVerification?.comparison;
+  if (comparison && typeof comparison === 'object') {
+    return {
+      passed: Number(comparison.matchCount || 0),
+      total: Number(comparison.totalChecked || rows.length || 0),
+    };
+  }
+
+  return {
+    passed: rows.filter((row) => String(row?.status || '').toUpperCase() === 'PASS').length,
+    total: rows.length,
+  };
+}
+
+function getAuditComparisonDetails(entry) {
+  const details = [];
+
+  for (const rawOp of asArray(entry?.rawOperations)) {
+    const auditVerification = rawOp?.auditVerification;
+    const fields = getAuditRowsFromVerification(auditVerification);
+    if (fields.length > 0) {
+      details.push({
+        operation: rawOp.operation,
+        fields,
+        summary: getAuditSummary(auditVerification, fields),
+      });
+    }
+  }
+
+  const operationsWithRows = new Set(details.map((detail) => String(detail.operation || '').toLowerCase()));
+  for (const mismatch of asArray(entry?.auditMismatches)) {
+    const opName = String(mismatch?.operation || '').toLowerCase();
+    if (operationsWithRows.has(opName)) continue;
+
+    const fields = [
+      ...asArray(mismatch?.fieldValidationResults),
+      ...asArray(mismatch?.mismatches).map((item) => ({
+        fieldName: item.field,
+        expected: item.expected,
+        actual: item.actual,
+        status: 'MISMATCH',
+        error: item.error || '',
+      })),
+      ...asArray(mismatch?.notFoundInAudit).map((item) => ({
+        fieldName: item.field,
+        expected: item.expected,
+        actual: null,
+        status: 'NOT_FOUND',
+        error: 'Field not found in audit trail',
+      })),
+    ];
+
+    if (fields.length > 0) {
+      details.push({
+        operation: mismatch.operation,
+        fields,
+        summary: {
+          passed: Number(mismatch.matchCount || 0),
+          total: fields.length || Number(mismatch.matchCount || 0) + Number(mismatch.mismatchCount || 0),
+        },
+      });
+    }
+  }
+
+  return details;
+}
+
+function getAuditStatusMessage(entry, auditEnabled) {
+  if (!auditEnabled) return '-';
+  const reasons = [
+    ...asArray(entry?.rawOperations).map((op) => op?.auditVerification?.reason),
+    ...asArray(entry?.auditMismatches).map((item) => item?.reason),
+    entry?.error,
+  ].map((value) => String(value || '').trim()).filter(Boolean);
+  return reasons[0] || 'No comparison data returned';
+}
+
+function displayAuditValue(value) {
+  const text = String(value ?? '').trim();
+  return text || '-';
+}
 
 function CrudPage({ masters: propMasters = [] }) {
   const [config, setConfig] = useState({
@@ -22,14 +204,24 @@ function CrudPage({ masters: propMasters = [] }) {
 
   const [masters, setMasters] = useState(propMasters);
   const [selectedMaster, setSelectedMaster] = useState('');
+  const [selectedMasters, setSelectedMasters] = useState([]);
   const [loadingMasters, setLoadingMasters] = useState(false);
 
   // Use shared masters from props, or allow manual fetch
   useEffect(() => {
     if (propMasters && propMasters.length > 0) {
-      setMasters(propMasters);
+      const normalized = normalizeMasters(propMasters);
+      setMasters(normalized);
+      if (!selectedMaster && normalized.length > 0) {
+        setSelectedMaster(normalized[0].name);
+      }
+      setSelectedMasters((prev) => {
+        const prevList = Array.isArray(prev) ? prev : [];
+        if (prevList.length > 0) return prevList;
+        return normalized.length > 0 ? [normalized[0].name] : [];
+      });
     }
-  }, [propMasters]);
+  }, [propMasters, selectedMaster]);
 
   const [masterFields, setMasterFields] = useState([]);
   const [loadingFieldOptions, setLoadingFieldOptions] = useState(false);
@@ -49,11 +241,18 @@ function CrudPage({ masters: propMasters = [] }) {
   const [resultsSaving, setResultsSaving] = useState(false);
   const [error, setError] = useState('');
 
+  function isAuditVerificationPassed(auditVerification) {
+    return !!auditVerification
+      && auditVerification.verified === true
+      && (!auditVerification.comparison || auditVerification.comparison.passed !== false);
+  }
+
   function buildOperationStatuses(data, requestedOperation, verifyAuditTrail) {
     const requested = String(requestedOperation || '').toLowerCase();
     const targetOps = requested === 'all' ? ['create', 'update', 'delete'] : [requested];
     const failures = Array.isArray(data?.failures) ? data.failures : [];
     const auditMismatches = Array.isArray(data?.auditMismatches) ? data.auditMismatches : [];
+    const auditEnabled = verifyAuditTrail === true;
 
     return targetOps.map((op) => {
       const hasCrudFailure = failures.some((f) => String(f?.operation || '').toLowerCase() === op);
@@ -66,18 +265,29 @@ function CrudPage({ masters: propMasters = [] }) {
         ? data.operations.find((o) => String(o?.operation || '').toLowerCase() === op)
         : null;
       const av = opData?.auditVerification;
-      const auditRan = verifyAuditTrail && !!av;
+      const serverAuditRequired = opData?.auditRequired === true;
+      const serverAuditPassedProvided = typeof opData?.auditPassed === 'boolean';
+      const serverAuditPassed = serverAuditPassedProvided ? opData.auditPassed === true : false;
+      const auditRan = auditEnabled && !skipped && (serverAuditRequired || !!av || hasAuditFailure);
       const auditPassed = auditRan
-        && av.verified !== false
-        && (!av.comparison || av.comparison.passed !== false);
+        && (serverAuditPassedProvided ? serverAuditPassed : isAuditVerificationPassed(av))
+        && !hasAuditFailure;
+      const auditMissing = auditEnabled
+        && !skipped
+        && !hasAuditFailure
+        && !hasCrudFailure
+        && !serverAuditPassedProvided
+        && !av;
+      const auditFailed = auditEnabled && !skipped && (hasAuditFailure || !auditPassed || auditMissing);
 
       return {
         operation: op,
-        status: hasCrudFailure || hasAuditFailure ? 'fail' : skipped ? 'skip' : 'pass',
-        auditFailed: auditRan ? !auditPassed : hasAuditFailure,
+        status: hasCrudFailure || auditFailed ? 'fail' : skipped ? 'skip' : 'pass',
+        auditFailed,
         auditRan,
         auditPassed,
         skipped,
+        message: auditMissing ? 'Audit verification result missing from CRUD response' : '',
       };
     });
   }
@@ -128,6 +338,7 @@ function CrudPage({ masters: propMasters = [] }) {
           username: config.username,
           password: config.password,
           showBrowser: config.showBrowser,
+          verifyAuditTrail: config.verifyAuditTrail,
           // Pass the just-created field values so the duplicate attempt reuses them exactly
           prefilledValues: createdAuditTrail || undefined,
         });
@@ -272,11 +483,19 @@ function CrudPage({ masters: propMasters = [] }) {
         list = Array.isArray(cached) ? cached : cached?.masters || [];
       }
 
-      setMasters(list);
+      const normalizedList = normalizeMasters(list);
+      setMasters(normalizedList);
       await loadDependencyConfigTable();
 
-      const targetMaster = selectedMaster || (list.length ? list[0].name : '');
+      const targetMaster = selectedMaster || (normalizedList.length ? normalizedList[0].name : '');
       setSelectedMaster(targetMaster);
+
+      const validMasterSet = new Set(normalizedList.map((m) => m.name));
+      setSelectedMasters((prev) => {
+        const kept = (Array.isArray(prev) ? prev : []).filter((name) => validMasterSet.has(name));
+        if (kept.length > 0) return kept;
+        return targetMaster ? [targetMaster] : [];
+      });
 
       if (targetMaster) {
         await loadDependencyEditorData(targetMaster);
@@ -334,79 +553,100 @@ function CrudPage({ masters: propMasters = [] }) {
   }
 
   async function handleRun() {
-    if (!selectedMaster) return;
+    const mastersToRun = selectedMasters.length > 0
+      ? selectedMasters
+      : (selectedMaster ? [selectedMaster] : []);
+    if (!mastersToRun.length) return;
 
     setRunning(true);
     setError('');
+    const failures = [];
 
-    const runningEntry = {
-      id: Date.now(),
-      status: 'running',
-      master: selectedMaster,
-      operation,
-      verifyAuditTrail: config.verifyAuditTrail,
-      startedAt: new Date().toLocaleTimeString(),
-    };
-    setResults((prev) => [runningEntry, ...prev]);
-
-    try {
-      const data = await runCrudOperation(selectedMaster, {
+    for (let index = 0; index < mastersToRun.length; index += 1) {
+      const masterName = mastersToRun[index];
+      const runningEntry = {
+        id: Date.now() + index,
+        status: 'running',
+        master: masterName,
         operation,
-        loginUrl: config.loginUrl,
-        username: config.username,
-        password: config.password,
-        showBrowser: config.showBrowser,
         verifyAuditTrail: config.verifyAuditTrail,
-      });
-
-      const crudOperationStatuses = buildOperationStatuses(data, operation, config.verifyAuditTrail);
-      const postCheckStatuses = await runPostCrudChecks(selectedMaster, data);
-      const operationStatuses = [...crudOperationStatuses, ...postCheckStatuses];
-
-      const hasAnyFailure = operationStatuses.some((op) => op.status === 'fail') || data?.failed;
-      const allCrudSkipped = crudOperationStatuses.length > 0 && crudOperationStatuses.every((op) => op.skipped);
-      const overallStatus = hasAnyFailure
-        ? 'fail'
-        : allCrudSkipped && postCheckStatuses.length === 0
-          ? 'skip'
-          : 'pass';
-
-      const finishedEntry = {
-        ...runningEntry,
-        status: overallStatus,
-        overallStatus,
-        operationStatuses,
-        finishedAt: new Date().toLocaleTimeString(),
+        startedAt: new Date().toLocaleTimeString(),
       };
 
-      setResults((prev) => {
-        const updated = prev.map((entry) =>
-          entry.id === runningEntry.id ? finishedEntry : entry
-        );
-        persistResults(updated);
-        return updated;
-      });
-    } catch (err) {
-      const failedEntry = {
-        ...runningEntry,
-        status: 'fail',
-        overallStatus: 'fail',
-        operationStatuses: [{ operation, status: 'fail' }],
-        error: err.message,
-        finishedAt: new Date().toLocaleTimeString(),
-      };
+      setResults((prev) => [runningEntry, ...prev]);
 
-      setResults((prev) => {
-        const updated = prev.map((entry) =>
-          entry.id === runningEntry.id ? failedEntry : entry
-        );
-        persistResults(updated);
-        return updated;
-      });
-      setError(err.message || 'CRUD operation failed');
-    } finally {
-      setRunning(false);
+      try {
+        const data = await runCrudOperation(masterName, {
+          operation,
+          loginUrl: config.loginUrl,
+          username: config.username,
+          password: config.password,
+          showBrowser: config.showBrowser,
+          verifyAuditTrail: config.verifyAuditTrail,
+        });
+
+        const crudOperationStatuses = buildOperationStatuses(data, operation, config.verifyAuditTrail);
+        const postCheckStatuses = await runPostCrudChecks(masterName, data);
+        const operationStatuses = [...crudOperationStatuses, ...postCheckStatuses];
+
+        const hasAnyFailure = operationStatuses.some((op) => op.status === 'fail') || data?.failed;
+        const allCrudSkipped = crudOperationStatuses.length > 0 && crudOperationStatuses.every((op) => op.skipped);
+        const overallStatus = hasAnyFailure
+          ? 'fail'
+          : allCrudSkipped && postCheckStatuses.length === 0
+            ? 'skip'
+            : 'pass';
+
+        if (overallStatus === 'fail') {
+          failures.push(`${masterName}: operation reported failure`);
+        }
+
+        const finishedEntry = {
+          ...runningEntry,
+          status: overallStatus,
+          overallStatus,
+          operationStatuses,
+          rawOperations: Array.isArray(data?.operations) ? data.operations : [],
+          auditMismatches: Array.isArray(data?.auditMismatches) ? data.auditMismatches : [],
+          finishedAt: new Date().toLocaleTimeString(),
+        };
+
+        setResults((prev) => {
+          const updated = prev.map((entry) =>
+            entry.id === runningEntry.id ? finishedEntry : entry
+          );
+          persistResults(updated);
+          return updated;
+        });
+      } catch (err) {
+        const failedEntry = {
+          ...runningEntry,
+          status: 'fail',
+          overallStatus: 'fail',
+          operationStatuses: [{ operation, status: 'fail' }],
+          error: err.message,
+          finishedAt: new Date().toLocaleTimeString(),
+        };
+
+        failures.push(`${masterName}: ${err.message || 'CRUD operation failed'}`);
+
+        setResults((prev) => {
+          const updated = prev.map((entry) =>
+            entry.id === runningEntry.id ? failedEntry : entry
+          );
+          persistResults(updated);
+          return updated;
+        });
+      }
     }
+
+    if (failures.length > 0) {
+      setError(`Completed with failures for ${failures.length}/${mastersToRun.length} master(s): ${failures.join(' | ')}`);
+    } else {
+      setError('');
+    }
+
+    setRunning(false);
   }
 
   async function handleSaveResults() {
@@ -498,13 +738,17 @@ function CrudPage({ masters: propMasters = [] }) {
 
             <div className="form-row">
               <label>
-                Master
+                Master (Dependency Setup)
                 <div className="input-group">
                   <select
                     value={selectedMaster}
                     onChange={(e) => {
                       const nextMaster = e.target.value;
                       setSelectedMaster(nextMaster);
+                      setSelectedMasters((prev) => {
+                        if (Array.isArray(prev) && prev.length > 0) return prev;
+                        return nextMaster ? [nextMaster] : [];
+                      });
                       loadDependencyEditorData(nextMaster);
                     }}
                     disabled={!masters.length}
@@ -514,7 +758,7 @@ function CrudPage({ masters: propMasters = [] }) {
                     ) : (
                       masters.map((master) => (
                         <option key={master.name} value={master.name}>
-                          {master.displayName} ({master.name})
+                          {master.displayName || master.name} ({master.name})
                         </option>
                       ))
                     )}
@@ -524,6 +768,19 @@ function CrudPage({ masters: propMasters = [] }) {
                   </button>
                 </div>
               </label>
+
+              <div className="crud-master-multi">
+                <span>Masters (CRUD Run)</span>
+                <MultiSelect
+                  options={masters.map((master) => ({ value: master.name, label: `${master.displayName || master.name} (${master.name})` }))}
+                  value={selectedMasters}
+                  onChange={setSelectedMasters}
+                  placeholder="Select one or more masters"
+                  ariaLabel="Select masters for CRUD run"
+                  rootClassName="multi-select-compliance"
+                  wrapTags
+                />
+              </div>
 
               <label>
                 Operation
@@ -621,9 +878,9 @@ function CrudPage({ masters: propMasters = [] }) {
                 type="button"
                 className="btn-run"
                 onClick={handleRun}
-                disabled={running || !selectedMaster}
+                disabled={running || (!(selectedMasters.length > 0) && !selectedMaster)}
               >
-                {running ? `Running ${operation}...` : `Run ${operation.charAt(0).toUpperCase() + operation.slice(1)}`}
+                {running ? `Running ${operation}...` : `Run ${operation.charAt(0).toUpperCase() + operation.slice(1)} for ${selectedMasters.length > 0 ? selectedMasters.length : (selectedMaster ? 1 : 0)} master(s)`}
               </button>
             </div>
 
@@ -709,6 +966,7 @@ function CrudPage({ masters: propMasters = [] }) {
                     <th style={thStyle}>Master</th>
                     <th style={thStyle}>Operation</th>
                     <th style={thStyle}>Audit Trail</th>
+                    <th style={thStyle}>Comparison</th>
                     <th style={thStyle}>Started</th>
                     <th style={thStyle}>Finished</th>
                     <th style={thStyle}>Sub-operations</th>
@@ -734,6 +992,9 @@ function CrudPage({ masters: propMasters = [] }) {
                         ? '⏳ Pending'
                         : auditFailed ? '❌ Fail' : '✅ Pass';
 
+                    const auditFieldDetails = getAuditComparisonDetails(entry);
+                    const auditStatusMessage = getAuditStatusMessage(entry, auditEnabled);
+
                     return (
                       <tr key={entry.id} style={{ background: rowBg, borderBottom: '1px solid #dee2e6' }}>
                         <td style={tdStyle}>
@@ -744,6 +1005,68 @@ function CrudPage({ masters: propMasters = [] }) {
                         <td style={tdStyle}><strong>{entry.master}</strong></td>
                         <td style={tdStyle}>{entry.operation}</td>
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{auditText}</td>
+                        <td style={{ ...tdStyle, minWidth: '280px', maxWidth: '520px', verticalAlign: 'top' }}>
+                          {auditFieldDetails.length === 0 ? (
+                            <span style={{ color: '#aaa', fontSize: '0.78rem' }}>
+                              {auditStatusMessage}
+                            </span>
+                          ) : auditFieldDetails.map((opDetail, idx) => {
+                            const passed = opDetail.summary
+                              ? opDetail.summary.passed
+                              : opDetail.fields.filter((f) => String(f.status || '').toUpperCase() === 'PASS').length;
+                            const total = opDetail.summary?.total ?? opDetail.fields.length;
+                            const allPassed = passed === total;
+                            return (
+                              <div key={idx} style={{ marginBottom: idx < auditFieldDetails.length - 1 ? '10px' : 0 }}>
+                                <div style={{
+                                  display: 'flex', alignItems: 'center', gap: '6px',
+                                  fontWeight: 700, fontSize: '0.73rem', marginBottom: '4px',
+                                  color: allPassed ? '#155724' : '#721c24',
+                                }}>
+                                  <span style={{
+                                    background: allPassed ? '#d4edda' : '#f8d7da',
+                                    color: allPassed ? '#155724' : '#721c24',
+                                    borderRadius: '8px', padding: '1px 7px', fontSize: '0.7rem',
+                                    border: `1px solid ${allPassed ? '#c3e6cb' : '#f5c6cb'}`,
+                                  }}>
+                                    {String(opDetail.operation || '').toUpperCase()}
+                                  </span>
+                                  {passed}/{total} fields matched
+                                </div>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
+                                  <thead>
+                                    <tr style={{ background: '#f0f2f5' }}>
+                                      <th style={{ padding: '3px 6px', textAlign: 'left', borderBottom: '1px solid #dee2e6', whiteSpace: 'nowrap', fontWeight: 600 }}>Field</th>
+                                      <th style={{ padding: '3px 6px', textAlign: 'left', borderBottom: '1px solid #dee2e6', fontWeight: 600 }}>Actual Saved Data</th>
+                                      <th style={{ padding: '3px 6px', textAlign: 'left', borderBottom: '1px solid #dee2e6', fontWeight: 600 }}>Audit Trail Data</th>
+                                      <th style={{ padding: '3px 6px', textAlign: 'center', borderBottom: '1px solid #dee2e6', fontWeight: 600 }}>Match</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {opDetail.fields.map((field, fi) => {
+                                      const fieldPassed = String(field.status || '').toUpperCase() === 'PASS';
+                                      const fieldName = displayAuditValue(field.fieldName);
+                                      const savedValue = displayAuditValue(field.expected);
+                                      const auditValue = displayAuditValue(field.actual);
+                                      return (
+                                        <tr key={fi} style={{ background: fieldPassed ? '#f6fff8' : '#fff5f5' }}>
+                                          <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f2f5', whiteSpace: 'nowrap', fontWeight: 500 }}>{fieldName}</td>
+                                          <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f2f5', color: '#333', wordBreak: 'break-word', maxWidth: '150px' }}>{savedValue}</td>
+                                          <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f2f5', color: '#333', wordBreak: 'break-word', maxWidth: '150px' }}>{auditValue}</td>
+                                          <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f2f5', textAlign: 'center', fontWeight: 700, fontSize: '0.85rem', color: fieldPassed ? '#28a745' : '#dc3545' }}>
+                                            <span title={`${fieldName} - ${savedValue} - ${auditValue}`}>
+                                              {fieldPassed ? '✓' : '✗'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          })}
+                        </td>
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap', color: '#555' }}>{entry.startedAt || '—'}</td>
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap', color: '#555' }}>{entry.finishedAt || (st === 'running' ? '...' : '—')}</td>
                         <td style={tdStyle}>

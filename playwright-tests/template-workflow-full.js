@@ -7,9 +7,11 @@
  */
 
 const { chromium } = require('@playwright/test');
+const { randomBytes, randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { smartFillOffcanvasForm } = require('./helpers/smartFiller');
+const { verifyAuditTrailEntry } = require('./helpers/auditTrail');
 const {
   enableArtifactOverlayOnContext,
   enableArtifactOverlayOnPage,
@@ -24,15 +26,34 @@ function boolEnv(v, d) {
 const CFG = {
   loginUrl:    process.env.QT_URL  || 'https://ipdev.quickflow.in/login',
   username:    process.env.QT_USER || 'dhruvi',
-  password:    process.env.QT_PASS || 'asdf@345',
+  password:    process.env.QT_PASS || 'Welcome@123',
   headless:    boolEnv(process.env.QT_HEADLESS, false),
   recordVideo: boolEnv(process.env.QT_RECORD_VIDEO, true),
 };
 const BASE_URL     = new URL(CFG.loginUrl).origin;
 const COUNTRY_NAME  = 'India';
 const TIMEZONE_NAME = 'India ( +05:30 )';
-const RUN_STAMP    = Date.now().toString(36).toUpperCase();
+const RUN_STAMP    = compactGuid(createGuid()).slice(0, 16);
 const ARTIFACTS_DIR = path.resolve(__dirname, 'test-reports');
+
+function createGuid() {
+  if (typeof randomUUID === 'function') return randomUUID();
+  return randomBytes(16).toString('hex');
+}
+
+function compactGuid(value) {
+  return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+}
+
+function codeFromStamp(prefix, stamp, length = 8) {
+  const clean = compactGuid(stamp);
+  const token = (clean.slice(-length) || clean || compactGuid(createGuid())).slice(0, length);
+  return `${prefix}${token}`;
+}
+
+function uniqueStamp(length = 16) {
+  return compactGuid(createGuid()).slice(0, length);
+}
 
 function log(msg) { process.stderr.write(`[WORKFLOW] ${msg}\n`); }
 
@@ -83,7 +104,7 @@ function isDuplicateError(errorMsg) {
  * Used when duplicate errors occur to create alternative names.
  */
 function generateRetryStamp(attemptNum = 1) {
-  const base = Date.now().toString(36).toUpperCase();
+  const base = uniqueStamp(16);
   const suffix = String(attemptNum).padStart(2, '0');
   return `${base}-R${suffix}`;
 }
@@ -257,14 +278,68 @@ function isValueTaken(value, existingValues) {
 function generateUniqueValue(baseValue, existingValues, attemptNum = 1) {
   const attempts = 10;
   for (let i = 0; i < attempts; i++) {
-    const suffix = i === 0 ? `-NEW${attemptNum}` : `-NEW${attemptNum}-${i}`;
-    const candidate = `${baseValue}${suffix}`;
+    const suffix = i === 0 ? uniqueStamp(16) : `${uniqueStamp(16)}${attemptNum}${i}`;
+    const candidate = `${suffix}`;
     if (!isValueTaken(candidate, existingValues)) {
       return candidate;
     }
   }
-  // Fallback: use timestamp
-  return `${baseValue}-${Date.now().toString(36).toUpperCase()}`;
+  // Fallback: use a full fresh GUID fragment instead of reusing any earlier name/id.
+  return uniqueStamp(20);
+}
+
+async function verifyRecentlyCreatedEntry(page, routes, expectedText, entityLabel = 'record') {
+  const targets = Array.isArray(routes) ? routes : [routes];
+  const needle = String(expectedText || '').trim();
+  if (!needle || !targets.length) return false;
+
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const needleNorm = norm(needle);
+
+  for (const route of targets) {
+    try {
+      await navigateTo(page, route);
+      await dismissOverlays(page).catch(() => {});
+
+      const searchInputs = [
+        '#txtSearch',
+        'input[type="search"]',
+        '.dataTables_filter input',
+        'input[placeholder*="Search"]',
+      ];
+
+      for (const sel of searchInputs) {
+        const input = page.locator(sel).first();
+        if (!await input.isVisible().catch(() => false)) continue;
+        await input.fill('').catch(() => {});
+        await input.fill(needle).catch(() => {});
+        await page.waitForTimeout(500);
+        await input.press('Enter').catch(() => {});
+        await page.waitForTimeout(900);
+        break;
+      }
+
+      for (let i = 0; i < 3; i++) {
+        const rows = await page.evaluate(() => {
+          const getText = (el) => (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
+          return Array.from(document.querySelectorAll('tbody tr, [role="row"]')).map(getText).filter(Boolean);
+        }).catch(() => []);
+
+        const found = rows.some((row) => norm(row).includes(needleNorm));
+        if (found) {
+          log(`[VERIFY] ${entityLabel} found in list: "${needle}" on route "${route}"`);
+          return true;
+        }
+        await page.waitForTimeout(700);
+      }
+
+      log(`[VERIFY] ${entityLabel} not found on route "${route}", trying next route if available`);
+    } catch (err) {
+      log(`[VERIFY] Could not verify ${entityLabel} on route "${route}": ${err.message}`);
+    }
+  }
+
+  return false;
 }
 
 // ── Shared page helpers ───────────────────────────────────────────────────────
@@ -629,13 +704,12 @@ async function stepCreateSite(page, flowState) {
         
         // Generate new unique values
         const baseStamp = generateRetryStamp(attempt);
-        const baseNames = `AUTO-SITE-${baseStamp}`;
-        stamp = generateUniqueValue(baseStamp, existingCodes, attempt);
+        stamp = generateUniqueValue(baseStamp, [...existingNames, ...existingCodes], attempt);
         log(`[STEP2] Generated new stamp for retry: ${stamp}`);
       }
 
       const siteName = `AUTO-SITE-${stamp}`;
-      const siteCode = `ST${stamp.slice(-4)}`;
+      const siteCode = codeFromStamp('ST', stamp);
       
       // Check locally if value likely exists
       if (existingNames.length > 0 && isValueTaken(siteName, existingNames)) {
@@ -826,7 +900,7 @@ async function stepCreateApp(page, flowState) {
         mode: 'create',
         prefilledValues: {
           Name: appName, 'App Name': appName,
-          'App Code': stamp.slice(-4), 'Short Name': `AP${stamp.slice(-4)}`, Code: stamp.slice(-4),
+          'App Code': codeFromStamp('AP', stamp), 'Short Name': codeFromStamp('AS', stamp, 6), Code: codeFromStamp('AP', stamp),
           Site: flowState.siteName, 'Site Name': flowState.siteName,
           'Form Submission To': 'Role',
         },
@@ -861,7 +935,7 @@ async function stepCreateApp(page, flowState) {
             
             if (existingNames.length > 0 || existingCodes.length > 0) {
               // Generate new app name/code that doesn't conflict
-              stamp = generateUniqueValue(RUN_STAMP, [...existingNames, ...existingCodes], attempt);
+              stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
               log(`[STEP3] Generated new stamp based on dashboard values: ${stamp}`);
             }
           } catch (err2) {
@@ -909,7 +983,7 @@ async function stepCreateTemplate(page, flowState) {
           audit = await smartFillOffcanvasForm(page, 'Create-Template', null, {
             mode: 'create',
             prefilledValues: {
-              Name: tplName, 'Template Name': tplName, 'Template Code': `TP${stamp.slice(-4)}`,
+              Name: tplName, 'Template Name': tplName, 'Template Code': codeFromStamp('TP', stamp),
               App: flowState.appName, Application: flowState.appName, 'App Name': flowState.appName,
             },
           });
@@ -952,7 +1026,7 @@ async function stepCreateTemplate(page, flowState) {
             const existingCodes = await fetchExistingValuesFromDashboard(page, 'Template Code');
             
             if (existingNames.length > 0 || existingCodes.length > 0) {
-              stamp = generateUniqueValue(RUN_STAMP, [...existingNames, ...existingCodes], attempt);
+              stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
               log(`[STEP4] Generated new stamp based on dashboard values: ${stamp}`);
             }
           } catch (err2) {
@@ -1051,7 +1125,7 @@ async function stepCreateSubTemplate(page, flowState) {
                 const existingCodes = await fetchExistingValuesFromDashboard(page, 'Sub-Template Code');
                 
                 if (existingNames.length > 0 || existingCodes.length > 0) {
-                  stamp = generateUniqueValue(RUN_STAMP, [...existingNames, ...existingCodes], attempt);
+                  stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
                   log(`[STEP5] Generated new stamp based on dashboard values: ${stamp}`);
                 }
                 break;
@@ -1267,6 +1341,91 @@ async function pickNthDropdownOnPage(page, nth, targetText, hint = '', waitMs = 
   throw new Error(`[NTH-SELECT] Could not select "${targetText}" in dropdown #${nth} (${hint})`);
 }
 
+async function captureWorkflowFieldSnapshot(page) {
+  const snapshot = await page.evaluate(() => {
+    const out = {};
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const body = document.querySelector('#offcanvas.show .offcanvas-body, .offcanvas.show .offcanvas-body');
+    if (!body) return out;
+
+    const isVisible = (el) => {
+      if (!el) return false;
+      const style = getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+    };
+
+    const add = (key, value) => {
+      const k = norm(key);
+      const v = norm(value);
+      if (!k || !v) return;
+      out[k] = v;
+    };
+
+    const getFieldLabel = (el, idx, fallbackPrefix) => {
+      const id = el.getAttribute('id') || '';
+      const byFor = id ? body.querySelector(`label[for="${id}"]`) : null;
+      if (byFor) {
+        const txt = norm(byFor.textContent);
+        if (txt) return txt;
+      }
+      const nearest = el.closest('.form-group, .mb-2, .mb-3, .col, .row, .ele, .input-group, .form-floating');
+      if (nearest) {
+        const lbl = nearest.querySelector('label, .form-label, .title, .field-title, .label');
+        if (lbl) {
+          const txt = norm(lbl.textContent);
+          if (txt) return txt;
+        }
+      }
+      const ph = norm(el.getAttribute('placeholder') || '');
+      if (ph) return ph;
+      return `${fallbackPrefix} ${idx + 1}`;
+    };
+
+    const textLike = Array.from(body.querySelectorAll('input[type="text"], input:not([type]), textarea, input[type="number"], input[type="email"], input[type="tel"]'));
+    textLike.filter(isVisible).forEach((el, idx) => {
+      const val = norm(el.value || '');
+      if (!val) return;
+      add(getFieldLabel(el, idx, 'Field'), val);
+    });
+
+    const selectValues = Array.from(body.querySelectorAll('select'));
+    selectValues.filter(isVisible).forEach((el, idx) => {
+      const selected = el.options?.[el.selectedIndex]?.textContent || '';
+      const val = norm(selected || el.value || '');
+      if (!val) return;
+      add(getFieldLabel(el, idx, 'Select'), val);
+    });
+
+    const reactSingles = Array.from(body.querySelectorAll('.react-select__single-value, [class*="single-value"]'));
+    reactSingles.filter(isVisible).forEach((el, idx) => {
+      const val = norm(el.textContent || '');
+      if (!val) return;
+      const host = el.closest('.ele, .form-group, .mb-2, .mb-3, .row, .col, .input-group') || el.parentElement;
+      let label = '';
+      if (host) {
+        const lbl = host.querySelector('label, .form-label, .title, .field-title, .label');
+        label = norm(lbl?.textContent || '');
+      }
+      add(label || `Dropdown ${idx + 1}`, val);
+    });
+
+    const radios = Array.from(body.querySelectorAll('input[type="radio"]')).filter((el) => isVisible(el) && el.checked);
+    radios.forEach((el, idx) => {
+      const id = el.getAttribute('id') || '';
+      const byFor = id ? body.querySelector(`label[for="${id}"]`) : null;
+      let label = norm(byFor?.textContent || '');
+      const name = norm(el.getAttribute('name') || '');
+      const value = norm(el.getAttribute('value') || byFor?.textContent || 'yes');
+      if (!label) label = name || `Radio ${idx + 1}`;
+      add(label, value);
+    });
+
+    return out;
+  }).catch(() => ({}));
+
+  return snapshot && typeof snapshot === 'object' ? snapshot : {};
+}
+
 async function stepAssignWorkflow(page, flowState) {
   log('Step 6: Template-Workflow page');
   await navigateTo(page, '/Template-Workflow');
@@ -1306,7 +1465,8 @@ async function stepAssignWorkflow(page, flowState) {
   log(`Level: "${levelLabel}"`);
 
   // 6f. Workflow Name and other text fields
-  const wfName = `AUTO-WF-${RUN_STAMP}`;
+  const workflowStamp = uniqueStamp(16);
+  const wfName = `AUTO-WF-${workflowStamp}`;
   flowState.workflowName = wfName;
   const textInputs = offcanvas.locator('input[type="text"]:visible:not([disabled]), input:not([type]):visible:not([disabled])');
   const inputCount = await textInputs.count().catch(() => 0);
@@ -1316,9 +1476,9 @@ async function stepAssignWorkflow(page, flowState) {
     const val = (await inp.inputValue().catch(() => '')) || '';
     if (val) continue;
     if (/workflow\s*name/i.test(ph) || i === 0) await inp.fill(wfName).catch(() => {});
-    else if (/esign|signature|meaning/i.test(ph)) await inp.fill(`Signed-${RUN_STAMP}`).catch(() => {});
+    else if (/esign|signature|meaning/i.test(ph)) await inp.fill(`Signed-${uniqueStamp(12)}`).catch(() => {});
     else if (/status/i.test(ph)) await inp.fill('Completed').catch(() => {});
-    else await inp.fill(`Auto-${RUN_STAMP}`).catch(() => {});
+    else await inp.fill(`Auto-${uniqueStamp(12)}`).catch(() => {});
   }
 
   // 6g. Task Type = Input Task
@@ -1350,6 +1510,21 @@ async function stepAssignWorkflow(page, flowState) {
   }).catch(() => {});
   await syncHiddenSelects(page);
   await page.waitForTimeout(300);
+
+  const snapshot = await captureWorkflowFieldSnapshot(page);
+  flowState.workflowAuditTrail = {
+    ...snapshot,
+    'Workflow Name': wfName,
+    Site: siteLabel || flowState.siteName,
+    App: appLabel || flowState.appName,
+    Template: tplLabel || flowState.templateName,
+    Level: levelLabel,
+    Role: roleLabel,
+    'Task Type': 'Input Task',
+    Print: 'None',
+    'Condition Workflow': 'No',
+  };
+  log(`[STEP6] Captured ${Object.keys(flowState.workflowAuditTrail).length} workflow field(s) for audit comparison`);
 
   // 6l. Save
   log('6l. Save workflow');
@@ -1457,133 +1632,44 @@ async function stepSwitchAppUnderSite(page, flowState) {
 
 // ── STEP 8: Audit Trail → Configuration Audit Trail → Master Workflow Audit Trail ──
 async function stepVerifyAuditTrail(page, flowState) {
-  log('Step 8: Audit Trail verification');
+  log('Step 8: Audit Trail verification (field-by-field)');
 
-  // Navigate to Audit Trail module
-  const auditRoutes = [`${BASE_URL}/Audit-Trails`, `${BASE_URL}/Audit-Trail`, `${BASE_URL}/AuditTrail`];
-  let landed = false;
-  for (const url of auditRoutes) {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(1200);
-    const bodyText = await page.evaluate(() => (document.body?.innerText || '').toLowerCase()).catch(() => '');
-    if (bodyText.includes('audit trail') || bodyText.includes('audit-trail')) { landed = true; break; }
-  }
-  if (!landed) { log('Could not navigate to Audit Trail module'); return { verified: false, reason: 'audit module not found' }; }
-  log('Audit Trail module opened');
-
-  // Click "Configuration Audit Trail"
-  const configAuditLink = page.locator('a:visible, li:visible, [role="menuitem"]:visible').filter({ hasText: /Configuration Audit Trail/i }).first();
-  if (await configAuditLink.isVisible().catch(() => false)) {
-    await configAuditLink.click({ force: true }).catch(() => {});
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(1200);
-    log('Clicked Configuration Audit Trail');
-  } else {
-    log('Warning: Configuration Audit Trail link not found – trying to proceed');
+  const expectedAuditTrail = flowState.workflowAuditTrail && typeof flowState.workflowAuditTrail === 'object'
+    ? flowState.workflowAuditTrail
+    : {};
+  if (!Object.keys(expectedAuditTrail).length) {
+    throw new Error('No workflow field snapshot available for audit comparison.');
   }
 
-  // Find "Master Workflow Audit Trail" in the report list and open it
-  const reportListSel = '#file-table-body tr, #file-table tr, #output-table-body tr, table tbody tr';
-  await page.waitForTimeout(1000);
-
-  let popup = null;
-  const masterWfAnchor = page.locator('a:visible', { hasText: /Master Workflow Audit Trail/i }).first();
-  if (await masterWfAnchor.isVisible().catch(() => false)) {
-    [popup] = await Promise.all([
-      page.waitForEvent('popup', { timeout: 8000 }).catch(() => null),
-      masterWfAnchor.click({ force: true }).catch(() => {}),
-    ]);
-    log('Clicked Master Workflow Audit Trail');
-  } else {
-    // Fallback: look in rows
-    const rows = await page.evaluate((sel) => {
-      return Array.from(document.querySelectorAll(sel))
-        .map(r => ({ text: (r.innerText || r.textContent || '').trim() }))
-        .filter(r => /master workflow audit trail/i.test(r.text));
-    }, reportListSel).catch(() => []);
-    if (rows.length) {
-      const rowLoc = page.locator(reportListSel, { hasText: /Master Workflow Audit Trail/i }).first();
-      [popup] = await Promise.all([
-        page.waitForEvent('popup', { timeout: 8000 }).catch(() => null),
-        rowLoc.click({ force: true }).catch(() => {}),
-      ]);
-    }
-  }
-
-  // Resolve the context (popup or main page)
-  let ctx = page;
-  if (popup) {
-    await popup.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {});
-    await popup.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
-    await popup.waitForTimeout(1200);
-    // Check frames for filter controls
-    const frames = popup.frames().filter(f => f !== popup.mainFrame());
-    for (const frame of frames) {
-      const hasFilters = await frame.evaluate(() => !!document.querySelector('select.operator_select, select[name$="_Operator"]')).catch(() => false);
-      if (hasFilters) { ctx = frame; break; }
-    }
-    if (ctx === page) ctx = popup;
-    log('Using popup context for audit report');
-  }
-
-  // Fill date range (Performed On: Between 01/01/2000 and 12/31/2099)
-  await ctx.evaluate(() => {
-    const emit = (el) => { ['input','change','blur'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true }))); };
-    const operators = Array.from(document.querySelectorAll('select.operator_select, select[name$="_Operator"], select[id$="_Operator"]'));
-    for (const op of operators) {
-      const opText = (op.options[op.selectedIndex]?.textContent || '').toLowerCase();
-      if (!/between/i.test(opText)) continue;
-      const base = (op.id || op.name || '').replace(/_Operator$/, '');
-      const i1 = document.getElementById(`${base}_Value_1`) || document.querySelector(`input[name="${base}_Value_1"]`);
-      const i2 = document.getElementById(`${base}_Value_2`) || document.querySelector(`input[name="${base}_Value_2"]`);
-      if (!i1 || !i2) continue;
-      i1.removeAttribute('readonly'); i2.removeAttribute('readonly');
-      i1.value = '01/01/2000'; emit(i1);
-      i2.value = '12/31/2099'; emit(i2);
-    }
-  }).catch(() => {});
-  await page.waitForTimeout(300);
-
-  // Execute/Run the report
-  const execBtn = [
-    ctx.locator('button:visible:not([disabled])', { hasText: /execute|run|apply|search|submit/i }).first(),
-    ctx.locator('a:visible', { hasText: /execute|run/i }).first(),
-    ctx.locator('button.btn-success:visible:not([disabled])').first(),
-  ];
-  for (const btn of execBtn) {
-    if (await btn.isVisible().catch(() => false)) { await btn.click({ force: true }).catch(() => {}); await page.waitForTimeout(1500); break; }
-  }
-
-  // Wait for rows and search for the workflow record
-  const rowSel = '#auditTrailTable tbody tr, #output-table-body tr, #output-table tr, table tbody tr';
-  let rows = [];
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    rows = await ctx.evaluate((sel) => Array.from(document.querySelectorAll(sel)).map(r => (r.innerText || r.textContent || '').replace(/\s+/g, ' ').trim()).filter(t => t && !/please wait|loading/i.test(t)), rowSel).catch(() => []);
-    if (rows.length) break;
-    await page.waitForTimeout(1000);
-  }
-  log(`Audit rows found: ${rows.length}`);
-
-  // Try searching for workflow name
-  const searchInput = ctx.locator('.dataTables_filter input:visible, input[type="search"]:visible').first();
-  if (await searchInput.isVisible().catch(() => false)) {
-    await searchInput.fill(flowState.workflowName || '').catch(() => {});
-    await page.waitForTimeout(900);
-    rows = await ctx.evaluate((sel) => Array.from(document.querySelectorAll(sel)).map(r => (r.innerText || r.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean), rowSel).catch(() => []);
-  }
-
-  const wfNorm = (flowState.workflowName || '').toLowerCase();
-  const matchRow = rows.find(r => {
-    const t = r.toLowerCase();
-    return (wfNorm && t.includes(wfNorm)) || /create|add/i.test(r);
+  const verification = await verifyAuditTrailEntry(page, {
+    baseURL: BASE_URL,
+    masterName: 'Master-Workflow',
+    operation: 'create',
+    recordName: flowState.workflowName || '',
+    recordID: flowState.workflowName || '',
+    auditTrail: expectedAuditTrail,
+    strict: true,
   });
 
-  const verified = !!matchRow;
-  log(`Audit verified: ${verified}${matchRow ? ` — "${matchRow.slice(0, 80)}"` : ''}`);
-  if (popup && !popup.isClosed()) await popup.close().catch(() => {});
-  return { verified, matchedRow: matchRow || '', rowCount: rows.length };
+  const comparison = verification.comparison || null;
+  if (!verification.verified) {
+    throw new Error(`Audit row verification failed: ${verification.reason || (verification.missing || []).join(', ') || 'unknown reason'}`);
+  }
+  if (!comparison) {
+    throw new Error('Audit detail comparison is unavailable (no extracted field rows).');
+  }
+  if (!comparison.passed) {
+    throw new Error(`Audit field mismatch: ${comparison.mismatchCount} mismatch/not-found out of ${comparison.totalChecked} checked.`);
+  }
+
+  log(`[AUDIT] Field comparison passed: ${comparison.matchCount}/${comparison.totalChecked} fields matched`);
+  return {
+    verified: true,
+    matchedRow: verification.matchedRow || '',
+    rowCount: comparison.totalChecked,
+    comparison,
+    source: verification.source || 'audit-report',
+  };
 }
 
 // ── Main run() ────────────────────────────────────────────────────────────────
@@ -1652,7 +1738,13 @@ async function run() {
     const page = await context.newPage();
     await enableArtifactOverlayOnPage(page);
 
-    const pass = (r) => /success|saved|created|added/i.test(r) || !/error|fail|invalid/i.test(r);
+    const hasFailureSignal = (msg) => /error|fail|failed|invalid|duplicate|already exist|already in use|required|mandatory|rejected|exception/i.test(String(msg || ''));
+    const hasSuccessSignal = (msg) => /success|saved|created|added|completed/i.test(String(msg || ''));
+    const stepPass = (saveMessage, verified) => {
+      if (!verified) return false;
+      if (hasFailureSignal(saveMessage)) return false;
+      return hasSuccessSignal(saveMessage);
+    };
 
     // ── Step 1: Login (always runs — needed to authenticate) ──────────────────
     await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'login' });
@@ -1664,7 +1756,15 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'create-site' });
       try {
         const r = await stepCreateSite(page, flowState);
-        steps.createSite = { status: pass(r.saveMessage) ? 'passed' : 'failed', message: r.saveMessage, siteName: flowState.siteName };
+        const verified = await verifyRecentlyCreatedEntry(page, '/Site', flowState.siteName, 'Site');
+        const status = stepPass(r.saveMessage, verified) ? 'passed' : 'failed';
+        steps.createSite = {
+          status,
+          message: verified ? r.saveMessage : `Created value was not found in list after save. Save message: ${r.saveMessage}`,
+          siteName: flowState.siteName,
+          verified,
+        };
+        if (status !== 'passed') throw new Error(`CreateSite validation failed: ${steps.createSite.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'createSite', e.message);
         log(`CreateSite error: ${e.message}`);
@@ -1677,7 +1777,15 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'create-app' });
       try {
         const r = await stepCreateApp(page, flowState);
-        steps.createApp = { status: pass(r.saveMessage) ? 'passed' : 'failed', message: r.saveMessage, appName: flowState.appName };
+        const verified = await verifyRecentlyCreatedEntry(page, '/Create-App', flowState.appName, 'App');
+        const status = stepPass(r.saveMessage, verified) ? 'passed' : 'failed';
+        steps.createApp = {
+          status,
+          message: verified ? r.saveMessage : `Created value was not found in list after save. Save message: ${r.saveMessage}`,
+          appName: flowState.appName,
+          verified,
+        };
+        if (status !== 'passed') throw new Error(`CreateApp validation failed: ${steps.createApp.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'createApp', e.message);
         log(`CreateApp error: ${e.message}`);
@@ -1690,7 +1798,15 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'create-template' });
       try {
         const r = await stepCreateTemplate(page, flowState);
-        steps.createTemplate = { status: pass(r.saveMessage) ? 'passed' : 'failed', message: r.saveMessage, templateName: flowState.templateName };
+        const verified = await verifyRecentlyCreatedEntry(page, '/Create-Template', flowState.templateName, 'Template');
+        const status = stepPass(r.saveMessage, verified) ? 'passed' : 'failed';
+        steps.createTemplate = {
+          status,
+          message: verified ? r.saveMessage : `Created value was not found in list after save. Save message: ${r.saveMessage}`,
+          templateName: flowState.templateName,
+          verified,
+        };
+        if (status !== 'passed') throw new Error(`CreateTemplate validation failed: ${steps.createTemplate.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'createTemplate', e.message);
         log(`CreateTemplate error: ${e.message}`);
@@ -1703,9 +1819,19 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'create-sub-template' });
       try {
         const r = await stepCreateSubTemplate(page, flowState);
+        const verified = r.skipped
+          ? false
+          : await verifyRecentlyCreatedEntry(page, ['/Create-Sub-Templates', '/Sub-Template', '/Create-Sub-Template'], flowState.subTemplateName, 'Sub-Template');
+        const status = r.skipped ? 'skipped' : (stepPass(r.saveMessage, verified) ? 'passed' : 'failed');
         steps.createSubTemplate = r.skipped
           ? { status: 'skipped', message: 'Sub-Template page not found' }
-          : { status: pass(r.saveMessage) ? 'passed' : 'failed', message: r.saveMessage, subTemplateName: flowState.subTemplateName };
+          : {
+            status,
+            message: verified ? r.saveMessage : `Created value was not found in list after save. Save message: ${r.saveMessage}`,
+            subTemplateName: flowState.subTemplateName,
+            verified,
+          };
+        if (!r.skipped && status !== 'passed') throw new Error(`CreateSubTemplate validation failed: ${steps.createSubTemplate.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'createSubTemplate', e.message);
         log(`CreateSubTemplate error: ${e.message}`);
@@ -1720,7 +1846,7 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'assign-workflow' });
       try {
         const r = await stepAssignWorkflow(page, flowState);
-        steps.assignWorkflow = { status: pass(r.saveMessage) ? 'passed' : 'failed', message: r.saveMessage, wfName: flowState.workflowName };
+        steps.assignWorkflow = { status: hasFailureSignal(r.saveMessage) ? 'failed' : (hasSuccessSignal(r.saveMessage) ? 'passed' : 'failed'), message: r.saveMessage, wfName: flowState.workflowName };
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'assignWorkflow', e.message);
         log(`AssignWorkflow error: ${e.message}`);
@@ -1744,7 +1870,17 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'audit-trail' });
       try {
         const r = await stepVerifyAuditTrail(page, flowState);
-        steps.auditTrail = { status: r.verified ? 'passed' : 'failed', message: r.verified ? `Found: ${r.matchedRow.slice(0, 80)}` : `Not found (${r.rowCount} rows scanned)`, verified: r.verified };
+        const auditMsg = r.comparison
+          ? `${r.comparison.matchCount}/${r.comparison.totalChecked} fields matched`
+          : `Found: ${(r.matchedRow || '').slice(0, 80)}`;
+        steps.auditTrail = {
+          status: 'passed',
+          message: auditMsg,
+          verified: true,
+          matchedRow: r.matchedRow || '',
+          comparison: r.comparison || null,
+          source: r.source || 'audit-report',
+        };
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'auditTrail', e.message);
         log(`AuditTrail error: ${e.message}`);

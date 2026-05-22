@@ -145,6 +145,43 @@ export function runComplianceTest(payload = {}) {
   });
 }
 
+export function startComplianceRun(payload = {}) {
+  return request('/api/compliance/runs', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getComplianceRun(runId, clientToken) {
+  const safeRunId = encodeURIComponent(String(runId || ''));
+  if (!safeRunId) throw new Error('runId is required');
+  const params = new URLSearchParams();
+  if (clientToken) params.set('clientToken', String(clientToken));
+  const query = params.toString();
+  return request(`/api/compliance/runs/${safeRunId}${query ? `?${query}` : ''}`);
+}
+
+export function stopComplianceRun(runId, clientToken) {
+  const safeRunId = encodeURIComponent(String(runId || ''));
+  if (!safeRunId) throw new Error('runId is required');
+  return request(`/api/compliance/runs/${safeRunId}/stop`, {
+    method: 'POST',
+    body: JSON.stringify({ clientToken: String(clientToken || '') }),
+  });
+}
+
+export function openComplianceRunStream(runId, clientToken) {
+  const safeRunId = encodeURIComponent(String(runId || ''));
+  if (!safeRunId) throw new Error('runId is required');
+  if (!clientToken) throw new Error('clientToken is required');
+
+  const params = new URLSearchParams({ clientToken: String(clientToken) });
+  const path = `/api/compliance/runs/${safeRunId}/stream?${params.toString()}`;
+  const isAbsoluteBase = /^https?:\/\//i.test(API_BASE_URL);
+  const url = isAbsoluteBase ? `${API_BASE_URL}${path}` : `${API_BASE_URL || ''}${path}`;
+  return new EventSource(url);
+}
+
 export function getLastWorkflowRun() {
   return request('/api/template-workflow/last-run');
 }

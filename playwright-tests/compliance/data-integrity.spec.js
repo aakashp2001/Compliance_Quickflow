@@ -12,6 +12,8 @@ const { fillOffcanvasForm } = require('../helpers/formFiller');
 const { verifyAuditTrailEntry } = require('../helpers/auditTrail');
 const { login, navigateTo, openCreateForm, getActionableSaveButton, clickOptionalYesConfirmation, SEL } = require('../helpers/uiActions');
 
+const OFFCANVAS_SCOPE = `:is(${SEL.offcanvas})`;
+
 // Global Configuration
 const targetMaster = process.env.QT_MASTER || 'Department'; 
 const defaultUser = process.env.QT_USER || 'admin';
@@ -115,7 +117,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     await openCreateForm(page);
 
     // Identify a text input to inject special chars and long strings
-    const firstTextInput = page.locator(`${SEL.offcanvas} input[type="text"]`).first();
+    const firstTextInput = page.locator(`${OFFCANVAS_SCOPE} input[type="text"]`).first();
     await firstTextInput.waitFor({ state: 'visible' });
 
     const specialUnicodeStr = "Ärzte & Société";
@@ -241,7 +243,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     await pageB.waitForSelector(SEL.offcanvas, { timeout: 15000 });
 
     // User A modifies and saves
-    const firstInputA = pageA.locator(`${SEL.offcanvas} input[type="text"]`).first();
+    const firstInputA = pageA.locator(`${OFFCANVAS_SCOPE} input[type="text"]`).first();
     await firstInputA.fill('User A Concurrent Edit ' + Date.now());
     
     const saveBtnA = await getActionableSaveButton(pageA);
@@ -257,7 +259,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     await successToastLocatorA.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
 
     // User B modifies and attempts to save
-    const firstInputB = pageB.locator(`${SEL.offcanvas} input[type="text"]`).first();
+    const firstInputB = pageB.locator(`${OFFCANVAS_SCOPE} input[type="text"]`).first();
     await firstInputB.fill('User B Concurrent Edit ' + Date.now());
     
     const saveBtnB = await getActionableSaveButton(pageB);

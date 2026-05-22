@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -36,6 +36,7 @@ writeMasterFields(masterFieldsCache);
 const dependencyConfigPath = path.resolve(__dirname, '..', 'playwright-tests', 'helpers', 'dependent-dropdowns.json');
 const testReportArtifactsDir = path.resolve(__dirname, '..', 'playwright-tests', 'test-reports');
 const testReportsDataPath = path.resolve(__dirname, 'data', 'test-reports.json');
+const complianceRunsDataPath = path.resolve(__dirname, 'data', 'compliance-runs.json');
 const recordingsDataPath = path.resolve(__dirname, 'data', 'recordings.json');
 const mastersDataPath = path.resolve(__dirname, 'data', 'masters.json');
 const templateWorkflowFlowStatePath = path.resolve(__dirname, '..', 'playwright-tests', '.template-workflow-flow.json');
@@ -66,6 +67,25 @@ function appendTestReport(entry) {
   const existing = readTestReports();
   existing.unshift(entry);
   writeTestReports(existing.slice(0, 500));
+}
+
+function readComplianceRunsStore() {
+  try {
+    if (!fs.existsSync(complianceRunsDataPath)) return { runsById: {} };
+    const raw = fs.readFileSync(complianceRunsDataPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    const runsById = parsed && typeof parsed === 'object' && parsed.runsById && typeof parsed.runsById === 'object'
+      ? parsed.runsById
+      : {};
+    return { runsById };
+  } catch {
+    return { runsById: {} };
+  }
+}
+
+function writeComplianceRunsStore(store) {
+  ensureDir(path.dirname(complianceRunsDataPath));
+  fs.writeFileSync(complianceRunsDataPath, `${JSON.stringify(store, null, 2)}\n`, 'utf-8');
 }
 
 function readRecordingsIndex() {
@@ -1671,28 +1691,92 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
       operation,
       verifyAuditTrail,
       status: 'completed',
-      keepPrimaryOnly: true,
+      keepPrimaryOnly: !verifyAuditTrail,
     });
 
     const runLogs = trimReportText(result?._debug || '');
 
+    // Server-side strict audit verdict: when verifyAuditTrail is enabled,
+    // each CRUD operation must produce a verified audit result, and when
+    // operation data includes expected field values, comparison must pass.
+    const meaningfulAuditFieldCount = (auditTrail) => Object.entries(auditTrail || {}).filter(([key, value]) => {
+      const keyText = String(key || '');
+      const val = String(value || '').trim();
+      if (!val) return false;
+      if (/password|confirm\s*password|update\s*remarks?|reason|description/i.test(keyText)) return false;
+      return true;
+    }).length;
+
+    const normalizeOperationName = (value) => String(value || '').toLowerCase();
+    const ensureArray = (value) => (Array.isArray(value) ? value : []);
+
+    result.auditMismatches = ensureArray(result.auditMismatches);
+
     // Save successful operations to test reports
     if (Array.isArray(result.operations) && result.operations.length > 0) {
       for (const op of result.operations) {
-        const auditPassed = op.auditVerification
-          ? (op.auditVerification.verified && (!op.auditVerification.comparison || op.auditVerification.comparison.passed))
-          : true; // If no audit verification was requested, consider it passed
-
         const opName = op.operation || operation;
+        const normalizedOpName = normalizeOperationName(opName);
         const duplicateBlocked = opName === 'duplicate-check' ? op.duplicateBlocked === true : undefined;
         const opScreenshot = buildScreenshotFromPath(req, op.screenshotPath || '');
         const auditScreenshot = buildScreenshotFromPath(req, op.auditVerification?.screenshotPath || op.screenshotPath || '');
+
+        const comparisonSource = meaningfulAuditFieldCount(op.createdRecordDetails) > 0
+          ? op.createdRecordDetails
+          : op.auditTrail;
+        const fieldValidationResults = ensureArray(op.auditVerification?.fieldValidationResults);
+        const fieldByFieldPassed = op.auditVerification?.fieldByFieldResults?.passed === true;
+
+        const expectedFieldCount = meaningfulAuditFieldCount(comparisonSource);
+        const requiresAudit = verifyAuditTrail === true && duplicateBlocked === undefined;
+        const requiresFieldComparison = requiresAudit && expectedFieldCount > 0;
+        const hasAuditVerification = !!op.auditVerification;
+        const hasComparison = !!op.auditVerification?.comparison;
+        const comparisonPassed = fieldValidationResults.length > 0
+          ? fieldByFieldPassed
+          : (hasComparison && op.auditVerification.comparison.passed === true);
+        const verifiedByAudit = op.auditVerification?.verified === true;
+
+        const auditPassed = !requiresAudit
+          ? true
+          : (hasAuditVerification && verifiedByAudit && (!requiresFieldComparison || comparisonPassed));
+
+        const existingMismatchForOp = result.auditMismatches.some((m) => normalizeOperationName(m?.operation) === normalizedOpName);
+        if (requiresAudit && !auditPassed && !existingMismatchForOp) {
+          const reason = !hasAuditVerification
+            ? 'Audit verification result missing from CRUD response'
+            : !verifiedByAudit
+              ? (op.auditVerification?.reason || 'Audit verification did not pass')
+              : (requiresFieldComparison && !comparisonPassed
+                ? 'Audit field-by-field comparison failed'
+                : 'Audit verification failed');
+
+          result.auditMismatches.push({
+            operation: opName,
+            recordName: op.recordName || '',
+            reason,
+            mismatches: op.auditVerification?.comparison?.mismatches || [],
+            notFoundInAudit: op.auditVerification?.comparison?.notFoundInAudit || [],
+            matchCount: op.auditVerification?.comparison?.matchCount || 0,
+            mismatchCount: op.auditVerification?.comparison?.mismatchCount || 0,
+            fieldValidationResults,
+            createdRecordDetails: op.createdRecordDetails || {},
+            screenshotPath: op.auditVerification?.screenshotPath || op.screenshotPath || '',
+          });
+        }
+
+        // Expose explicit server audit verdict for frontend consumers.
+        op.auditRequired = requiresAudit;
+        op.auditFieldCount = expectedFieldCount;
+        op.auditPassed = auditPassed;
 
         appendTestReport({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           masterName,
           operation: opName,
-          status: opName === 'duplicate-check' && duplicateBlocked !== true ? 'failed' : 'passed',
+          status: opName === 'duplicate-check'
+            ? (duplicateBlocked !== true ? 'failed' : 'passed')
+            : 'passed',
           reason: opName === 'duplicate-check'
             ? (duplicateBlocked
               ? 'Duplicate check blocked the duplicate entry successfully'
@@ -1705,7 +1789,8 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
           recordName: op.recordName || '',
           fieldCount: op.fieldCount || 0,
           duplicateBlocked,
-          auditVerified: auditPassed,
+          enteredValues: op.auditTrail || {},
+          createdRecordDetails: op.createdRecordDetails || {},
           createdAt: new Date().toISOString(),
         });
 
@@ -1722,6 +1807,10 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
             error: '',
             recordName: op.recordName || '',
             verifiedOperation: opName,
+            enteredValues: op.auditTrail || {},
+            createdRecordDetails: op.createdRecordDetails || {},
+            auditFieldResults: fieldValidationResults,
+            auditFieldSummary: op.auditVerification?.fieldValidationSummary || null,
             createdAt: new Date().toISOString(),
           });
         }
@@ -1737,7 +1826,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
         appendTestReport({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           masterName,
-          operation: mismatch.operation || operation,
+          operation: 'audit-check',
           status: 'audit-mismatch',
           reason,
           logs: runLogs,
@@ -1745,10 +1834,13 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
           screenshotFile: fileName,
           error: buildAuditMismatchSummary(mismatch),
           recordName: mismatch.recordName || '',
+          verifiedOperation: mismatch.operation || operation,
           mismatches: mismatch.mismatches || [],
           notFoundInAudit: mismatch.notFoundInAudit || [],
           matchCount: mismatch.matchCount || 0,
           mismatchCount: mismatch.mismatchCount || 0,
+          createdRecordDetails: mismatch.createdRecordDetails || {},
+          auditFieldResults: mismatch.fieldValidationResults || [],
           createdAt: new Date().toISOString(),
         });
       }
@@ -1775,6 +1867,10 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
       }
     }
 
+    // Final overall flag after strict audit verdicts and synthesized mismatches.
+    result.failed = (Array.isArray(result.failures) && result.failures.length > 0)
+      || (Array.isArray(result.auditMismatches) && result.auditMismatches.length > 0);
+
     return res.json(result);
   } catch (error) {
     await finalizeRecordingCaptureSafe(recordingCapture, {
@@ -1783,7 +1879,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
       operation,
       verifyAuditTrail,
       status: 'failed',
-      keepPrimaryOnly: true,
+      keepPrimaryOnly: !verifyAuditTrail,
     });
     const message = error?.message || 'CRUD operation failed';
     const markerPath = extractFailureScreenshotPath(message);
@@ -1969,7 +2065,13 @@ app.post('/api/template-workflow/run', async (req, res) => {
       // stdout may not be valid JSON if test produced console output
     }
 
-    const passed = result.exitCode === 0 && (!jsonResult || jsonResult.status === 'completed');
+    const hasFailedStep = jsonResult && jsonResult.steps
+      ? Object.values(jsonResult.steps).some((step) => step && step.status === 'failed')
+      : false;
+    const passed = result.exitCode === 0
+      && !!jsonResult
+      && jsonResult.status === 'completed'
+      && !hasFailedStep;
 
         // ── Finalize recording (register new video in recordings index) ──────────
     const savedRecordings = await finalizeRecordingCaptureSafe(recordingCapture, {
@@ -2053,8 +2155,20 @@ app.post('/api/template-workflow/run', async (req, res) => {
 
 // ─── Compliance Test Runner ────────────────────────────────────────────────────
 
-function runComplianceScript(env) {
-  const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'compliance', 'compliance-runner.js');
+function normalizeComplianceSuite(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'MD' || normalized === 'AT') return normalized;
+  return 'DI';
+}
+
+function runComplianceScript(env, suite = 'DI') {
+  const normalizedSuite = normalizeComplianceSuite(suite);
+  const runnerFile = normalizedSuite === 'MD'
+    ? 'master-data-runner.js'
+    : normalizedSuite === 'AT'
+      ? 'audit-trail-runner.js'
+      : 'compliance-runner.js';
+  const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'compliance', runnerFile);
   const cwd = path.resolve(__dirname, '..', 'playwright-tests');
 
   return new Promise((resolve, reject) => {
@@ -2079,6 +2193,7 @@ function runComplianceScript(env) {
         const debugLog = (stderr || '').toString().trim();
         if (debugLog) process.stderr.write(`${debugLog}\n`);
         parsed._debug = debugLog;
+        parsed.suite = normalizeComplianceSuite(parsed?.suite || normalizedSuite);
         resolve(parsed);
       } catch (err) {
         const debug = (stderr || '').toString().trim();
@@ -2090,6 +2205,7 @@ function runComplianceScript(env) {
 }
 
 app.post('/api/compliance/run', async (req, res) => {
+  const suite = normalizeComplianceSuite(req.body?.suite || process.env.QT_SUITE || 'DI');
   const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
@@ -2103,6 +2219,7 @@ app.post('/api/compliance/run', async (req, res) => {
   try {
     const result = await runComplianceScript({
       ...process.env,
+      QT_SUITE: suite,
       QT_URL: String(loginUrl),
       QT_USER: String(username),
       QT_PASS: String(password),
@@ -2111,26 +2228,34 @@ app.post('/api/compliance/run', async (req, res) => {
       QT_MASTER: String(masterName),
       QT_TC_ID: String(tcId),
       QT_HEADLESS: showBrowser ? 'false' : 'true',
-    });
+    }, suite);
+
+    result.suite = normalizeComplianceSuite(result?.suite || suite);
 
     const overallPassed = result?.mode === 'all'
-      ? result?.summary?.failed === 0
-      : result?.status === 'passed';
+      ? Number(result?.summary?.failed || 0) === 0
+      : result?.status !== 'failed';
 
     const reportResults = result?.mode === 'all' ? (result?.results || []) : [result];
     for (const r of reportResults) {
+      const normalizedStatus = String(r?.status || '').toLowerCase() === 'blocked'
+        ? 'blocked'
+        : (String(r?.status || '').toLowerCase() === 'passed' ? 'passed' : 'failed');
+
       appendTestReport({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         masterName: String(masterName),
-        operation: `compliance-${String(r?.tcId || tcId || 'all').toLowerCase().replace(/\s+/g, '-')}`,
-        status: r?.status === 'passed' ? 'passed' : 'failed',
-        reason: r?.status === 'passed'
+        operation: `compliance-${suite.toLowerCase()}-${String(r?.tcId || tcId || 'all').toLowerCase().replace(/\s+/g, '-')}`,
+        status: normalizedStatus,
+        reason: normalizedStatus === 'passed'
           ? `${r?.title || r?.tcId || 'Compliance test'} passed`
-          : `${r?.title || r?.tcId || 'Compliance test'} failed`,
+          : normalizedStatus === 'blocked'
+            ? `${r?.title || r?.tcId || 'Compliance test'} blocked`
+            : `${r?.title || r?.tcId || 'Compliance test'} failed`,
         logs: trimReportText(`${r?._debug || ''}\n\n${JSON.stringify(r?.details || {}, null, 2)}`),
         screenshotUrl: '',
         screenshotFile: '',
-        error: r?.status !== 'passed' ? trimReportText(JSON.stringify(r?.details || '', null, 2)) : '',
+        error: normalizedStatus !== 'passed' ? trimReportText(JSON.stringify(r?.details || '', null, 2)) : '',
         createdAt: new Date().toISOString(),
       });
     }
@@ -2138,7 +2263,7 @@ app.post('/api/compliance/run', async (req, res) => {
     result.recordings = await finalizeRecordingCaptureSafe(recordingCapture, {
       kind: 'compliance',
       masterName: String(masterName),
-      operation: tcId || 'all',
+      operation: `${suite.toLowerCase()}-${tcId || 'all'}`,
       status: overallPassed ? 'completed' : 'failed',
     });
 
@@ -2147,7 +2272,7 @@ app.post('/api/compliance/run', async (req, res) => {
     await finalizeRecordingCaptureSafe(recordingCapture, {
       kind: 'compliance',
       masterName: String(masterName),
-      operation: tcId || 'all',
+      operation: `${suite.toLowerCase()}-${tcId || 'all'}`,
       status: 'failed',
     });
     const rawMessage = String(error?.message || 'Compliance run failed');
@@ -2155,7 +2280,7 @@ app.post('/api/compliance/run', async (req, res) => {
     appendTestReport({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       masterName: String(masterName),
-      operation: `compliance-${String(tcId || 'all')}`,
+      operation: `compliance-${suite.toLowerCase()}-${String(tcId || 'all')}`,
       status: 'failed',
       reason: buildReasonFromFailureText(sanitized, 'Compliance run failed'),
       logs: trimReportText(`${rawMessage}\n\n${sanitized}`),
@@ -2166,6 +2291,824 @@ app.post('/api/compliance/run', async (req, res) => {
     });
     return res.status(500).json({ message: sanitized });
   }
+});
+
+const REALTIME_COMPLIANCE_RETENTION_LIMIT = 100;
+const REALTIME_COMPLIANCE_DI_DEFAULT_TC_IDS = ['TC-DI-01', 'TC-DI-02-01', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
+const REALTIME_COMPLIANCE_MD_DEFAULT_TC_IDS = ['TC-MD-01-01', 'TC-MD-01-02', 'TC-MD-02-01', 'TC-MD-03-01', 'TC-MD-04-01', 'TC-MD-05-01', 'TC-MD-06-01', 'TC-MD-07-01', 'TC-MD-08-01'];
+const REALTIME_COMPLIANCE_AT_DEFAULT_TC_IDS = [
+  'TC-AT-01-01',
+  'TC-AT-01-02',
+  'TC-AT-01-03',
+  'TC-AT-02-01',
+  'TC-AT-02-02',
+  'TC-AT-03-01',
+  'TC-AT-04-01',
+  'TC-AT-05-01',
+  'TC-AT-05-02',
+  'TC-AT-05-03',
+  'TC-AT-06-01',
+  'TC-AT-06-02',
+  'TC-AT-07-01',
+  'TC-AT-08-01',
+  'TC-AT-08-02',
+  'TC-AT-09-01',
+  'TC-AT-09-02',
+  'TC-AT-10-01',
+];
+const realtimeComplianceRunsStore = readComplianceRunsStore();
+const realtimeComplianceSseClients = new Map(); // runId -> Set(response)
+const realtimeComplianceRunSecrets = new Map(); // runId -> sensitive config (passwords)
+const realtimeComplianceRunTasks = new Map(); // runId -> { stopRequested: boolean, child: ChildProcess | null }
+
+Object.values(realtimeComplianceRunsStore?.runsById || {}).forEach((run) => {
+  if (String(run?.status || '').toLowerCase() === 'running') {
+    run.status = 'failed';
+    run.error = run.error || 'Compliance run was interrupted by a server restart.';
+    run.progressMessage = run.error;
+    run.completedAt = run.completedAt || new Date().toISOString();
+    run.updatedAt = new Date().toISOString();
+  }
+});
+writeComplianceRunsStore(realtimeComplianceRunsStore);
+
+function isRealtimeComplianceTerminal(status) {
+  const normalized = String(status || '').toLowerCase().trim();
+  return normalized === 'completed' || normalized === 'failed' || normalized === 'stopped';
+}
+
+function normalizeRealtimeComplianceStatus(status) {
+  const value = String(status || '').toLowerCase().trim();
+  if (value === 'passed') return 'passed';
+  if (value === 'blocked') return 'blocked';
+  if (value === 'not-performed') return 'not-performed';
+  return 'failed';
+}
+
+function getRealtimeComplianceTask(runId) {
+  if (!realtimeComplianceRunTasks.has(runId)) {
+    realtimeComplianceRunTasks.set(runId, { stopRequested: false, child: null });
+  }
+  return realtimeComplianceRunTasks.get(runId);
+}
+
+function isRealtimeStopRequested(runId) {
+  return getRealtimeComplianceTask(runId)?.stopRequested === true;
+}
+
+function markRealtimeStopRequested(runId) {
+  const task = getRealtimeComplianceTask(runId);
+  task.stopRequested = true;
+}
+
+function setRealtimeActiveChild(runId, child) {
+  const task = getRealtimeComplianceTask(runId);
+  task.child = child || null;
+}
+
+function clearRealtimeRunTask(runId) {
+  realtimeComplianceRunTasks.delete(runId);
+}
+
+async function killRealtimeChildProcess(runId) {
+  const task = getRealtimeComplianceTask(runId);
+  const child = task?.child;
+  if (!child || !child.pid) return false;
+
+  try {
+    if (process.platform === 'win32') {
+      await new Promise((resolve) => {
+        execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], () => resolve());
+      });
+    } else {
+      try {
+        process.kill(child.pid, 'SIGTERM');
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    setRealtimeActiveChild(runId, null);
+  }
+}
+
+function buildRealtimeComplianceRunId() {
+  return `cr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildRealtimeComplianceClientToken() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getRealtimeComplianceDefaultTcIds(suite) {
+  const normalized = normalizeComplianceSuite(suite);
+  if (normalized === 'MD') return [...REALTIME_COMPLIANCE_MD_DEFAULT_TC_IDS];
+  if (normalized === 'AT') return [...REALTIME_COMPLIANCE_AT_DEFAULT_TC_IDS];
+  return [...REALTIME_COMPLIANCE_DI_DEFAULT_TC_IDS];
+}
+
+function expandRealtimeComplianceMasterNames(payload = {}) {
+  const fromArray = Array.isArray(payload?.masterNames)
+    ? payload.masterNames.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const fallback = String(payload?.masterName || process.env.QT_MASTER || 'Country').trim();
+  const candidate = fromArray.length ? fromArray : [fallback];
+  const seen = new Set();
+  const out = [];
+  candidate.forEach((name) => {
+    const key = name.toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(name);
+  });
+  return out;
+}
+
+function expandRealtimeComplianceTcIds(suite, tcIdsInput) {
+  const normalizedInput = (Array.isArray(tcIdsInput) ? tcIdsInput : [])
+    .map((value) => String(value || '').trim())
+    .filter((value) => value.length > 0);
+
+  if (!normalizedInput.length || normalizedInput.includes('')) {
+    return getRealtimeComplianceDefaultTcIds(suite);
+  }
+
+  const seen = new Set();
+  const out = [];
+  normalizedInput.forEach((tcId) => {
+    const key = tcId.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(tcId);
+  });
+  return out;
+}
+
+function sanitizeRealtimeComplianceSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const { clientToken, runConfig, ...safe } = snapshot;
+  return safe;
+}
+
+function pruneRealtimeComplianceRunsStore() {
+  const entries = Object.values(realtimeComplianceRunsStore?.runsById || {});
+  entries.sort((a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime());
+  const kept = entries.slice(0, REALTIME_COMPLIANCE_RETENTION_LIMIT);
+  realtimeComplianceRunsStore.runsById = Object.fromEntries(kept.map((entry) => [entry.runId, entry]));
+}
+
+function persistRealtimeComplianceRunsStore() {
+  pruneRealtimeComplianceRunsStore();
+  writeComplianceRunsStore(realtimeComplianceRunsStore);
+}
+
+function getRealtimeComplianceSnapshot(runId) {
+  const key = String(runId || '').trim();
+  if (!key) return null;
+  return realtimeComplianceRunsStore?.runsById?.[key] || null;
+}
+
+function saveRealtimeComplianceSnapshot(snapshot) {
+  if (!snapshot?.runId) return;
+  realtimeComplianceRunsStore.runsById[snapshot.runId] = snapshot;
+  persistRealtimeComplianceRunsStore();
+}
+
+function verifyRealtimeComplianceAccess(runId, clientToken) {
+  const snapshot = getRealtimeComplianceSnapshot(runId);
+  if (!snapshot) return { ok: false, code: 404, message: 'Compliance run not found', snapshot: null };
+  if (!clientToken || String(clientToken) !== String(snapshot.clientToken || '')) {
+    return { ok: false, code: 403, message: 'Invalid run token', snapshot: null };
+  }
+  return { ok: true, code: 200, message: '', snapshot };
+}
+
+function writeRealtimeComplianceSseEvent(res, eventName, payload) {
+  res.write(`event: ${eventName}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function broadcastRealtimeComplianceEvent(runId, eventName, payload) {
+  const clients = realtimeComplianceSseClients.get(runId);
+  if (!clients || !clients.size) return;
+  clients.forEach((res) => {
+    try {
+      writeRealtimeComplianceSseEvent(res, eventName, payload);
+    } catch {
+      // Ignore dead sockets; close listener handles cleanup.
+    }
+  });
+}
+
+function normalizeRealtimeComplianceResultPayload(payload, fallback = {}) {
+  const normalized = payload && typeof payload === 'object' ? { ...payload } : {};
+  const tcId = String(normalized?.tcId || fallback?.tcId || '').trim();
+  const title = String(normalized?.title || fallback?.title || tcId || 'Compliance test').trim();
+  return {
+    ...normalized,
+    tcId,
+    title,
+    suite: normalizeComplianceSuite(normalized?.suite || fallback?.suite),
+    status: normalizeRealtimeComplianceStatus(normalized?.status),
+  };
+}
+
+function buildNotPerformedComplianceResult({ suite, masterName, tcId, sequence, masterIndex, tcIndex }) {
+  return {
+    suite: normalizeComplianceSuite(suite),
+    status: 'not-performed',
+    tcId: String(tcId || '').trim() || 'unknown',
+    title: String(tcId || 'Compliance test'),
+    masterName: String(masterName || ''),
+    requestedMaster: String(masterName || ''),
+    requestedTcId: String(tcId || ''),
+    createdAt: new Date().toISOString(),
+    sequence,
+    masterIndex,
+    tcIndex,
+    recordings: [],
+    details: [
+      {
+        step: 'Execution',
+        passed: false,
+        reason: 'Not performed because run was stopped by user.',
+      },
+    ],
+    error: '',
+    _debug: '',
+  };
+}
+
+function appendRealtimeComplianceReportEntry({
+  runId = '',
+  suite = 'DI',
+  masterName = '',
+  result = {},
+  fallbackTcId = '',
+  sequence = 0,
+  masterIndex = -1,
+  tcIndex = -1,
+}) {
+  const normalizedSuite = normalizeComplianceSuite(suite);
+  const normalizedResult = normalizeRealtimeComplianceResultPayload(result, { tcId: fallbackTcId, suite: normalizedSuite });
+  const normalizedStatus = normalizeRealtimeComplianceStatus(normalizedResult?.status);
+  const tcId = String(normalizedResult?.tcId || fallbackTcId || 'all').trim();
+
+  appendTestReport({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    runId: String(runId || ''),
+    suite: normalizedSuite,
+    tcId,
+    sequence: Number(sequence || 0),
+    masterIndex: Number(masterIndex),
+    tcIndex: Number(tcIndex),
+    masterName: String(masterName || ''),
+    operation: `compliance-${normalizedSuite.toLowerCase()}-${tcId.toLowerCase().replace(/\s+/g, '-')}`,
+    status: normalizedStatus,
+    reason: normalizedStatus === 'passed'
+      ? `${normalizedResult?.title || tcId || 'Compliance test'} passed`
+      : normalizedStatus === 'blocked'
+        ? `${normalizedResult?.title || tcId || 'Compliance test'} blocked`
+        : normalizedStatus === 'not-performed'
+          ? `${normalizedResult?.title || tcId || 'Compliance test'} not performed`
+          : `${normalizedResult?.title || tcId || 'Compliance test'} failed`,
+    logs: trimReportText(`${normalizedResult?._debug || ''}\n\n${JSON.stringify(normalizedResult?.details || {}, null, 2)}`),
+    screenshotUrl: '',
+    screenshotFile: '',
+    error: (normalizedStatus !== 'passed' && normalizedStatus !== 'not-performed')
+      ? trimReportText(String(normalizedResult?.error || JSON.stringify(normalizedResult?.details || '', null, 2)))
+      : '',
+    createdAt: new Date().toISOString(),
+  });
+}
+
+function buildRealtimeComplianceEnv({
+  suite,
+  loginUrl,
+  username,
+  password,
+  username2,
+  password2,
+  masterName,
+  tcId,
+  showBrowser,
+}) {
+  return {
+    ...process.env,
+    QT_SUITE: normalizeComplianceSuite(suite),
+    QT_URL: String(loginUrl),
+    QT_USER: String(username),
+    QT_PASS: String(password),
+    QT_USER2: String(username2),
+    QT_PASS2: String(password2),
+    QT_MASTER: String(masterName),
+    QT_TC_ID: String(tcId || ''),
+    QT_HEADLESS: showBrowser ? 'false' : 'true',
+  };
+}
+
+function runComplianceScriptInterruptible(env, suite = 'DI', runId = '') {
+  const normalizedSuite = normalizeComplianceSuite(suite);
+  const runnerFile = normalizedSuite === 'MD'
+    ? 'master-data-runner.js'
+    : normalizedSuite === 'AT'
+      ? 'audit-trail-runner.js'
+      : 'compliance-runner.js';
+  const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'compliance', runnerFile);
+  const cwd = path.resolve(__dirname, '..', 'playwright-tests');
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd,
+      env,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    setRealtimeActiveChild(runId, child);
+
+    let stdout = '';
+    let stderr = '';
+    let killedByStop = false;
+
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk || '');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk || '');
+    });
+    child.on('error', (error) => {
+      setRealtimeActiveChild(runId, null);
+      reject(new Error(String(error?.message || 'Compliance script failed')));
+    });
+    child.on('close', (code, signal) => {
+      setRealtimeActiveChild(runId, null);
+      if (isRealtimeStopRequested(runId)) {
+        killedByStop = true;
+      }
+      if (killedByStop || signal) {
+        reject(new Error('Compliance run stopped by user'));
+        return;
+      }
+      if (code !== 0) {
+        const message = (stderr || stdout || `Compliance script failed with code ${code}`).toString().trim();
+        reject(new Error(message || 'Compliance script failed'));
+        return;
+      }
+      try {
+        const stdoutStr = String(stdout || '').trim();
+        const jsonMatch = stdoutStr.match(/\{[\s\S]*\}$/);
+        const jsonStr = jsonMatch ? jsonMatch[0] : stdoutStr;
+        const parsed = JSON.parse(jsonStr);
+        const debugLog = String(stderr || '').trim();
+        if (debugLog) process.stderr.write(`${debugLog}\n`);
+        parsed._debug = debugLog;
+        parsed.suite = normalizeComplianceSuite(parsed?.suite || normalizedSuite);
+        resolve(parsed);
+      } catch {
+        const debug = String(stderr || '').trim();
+        const output = String(stdout || '').trim();
+        reject(new Error('Compliance script did not return valid JSON' + (debug ? `: ${debug}` : '') + (output ? `\nOutput: ${output}` : '')));
+      }
+    });
+  });
+}
+
+async function runRealtimeComplianceSingleCase({
+  runId,
+  suite,
+  loginUrl,
+  username,
+  password,
+  username2,
+  password2,
+  masterName,
+  tcId,
+  showBrowser,
+}) {
+  const recordingCapture = beginRecordingCapture();
+  const normalizedSuite = normalizeComplianceSuite(suite);
+  try {
+    const raw = await runComplianceScriptInterruptible(buildRealtimeComplianceEnv({
+      suite: normalizedSuite,
+      loginUrl,
+      username,
+      password,
+      username2,
+      password2,
+      masterName,
+      tcId,
+      showBrowser,
+    }), normalizedSuite, runId);
+
+    const normalized = normalizeRealtimeComplianceResultPayload(raw, {
+      suite: normalizedSuite,
+      tcId,
+      title: tcId,
+    });
+    const recordingStatus = normalizeRealtimeComplianceStatus(normalized?.status) === 'passed' ? 'completed' : 'failed';
+    const recordings = await finalizeRecordingCaptureSafe(recordingCapture, {
+      kind: 'compliance',
+      masterName: String(masterName),
+      operation: `${normalizedSuite.toLowerCase()}-${String(tcId || normalized?.tcId || 'all').toLowerCase()}`,
+      status: recordingStatus,
+    });
+
+    return { ok: true, result: normalized, recordings };
+  } catch (error) {
+    await finalizeRecordingCaptureSafe(recordingCapture, {
+      kind: 'compliance',
+      masterName: String(masterName),
+      operation: `${normalizedSuite.toLowerCase()}-${String(tcId || 'all').toLowerCase()}`,
+      status: 'failed',
+    });
+    const rawMessage = String(error?.message || 'Compliance run failed');
+    const sanitized = rawMessage.replace(/\s*\[FAIL_SCREENSHOT\][^\r\n]*/i, '').trim();
+    return {
+      ok: false,
+      error: sanitized,
+      result: normalizeRealtimeComplianceResultPayload({
+        suite: normalizedSuite,
+        tcId: String(tcId || '').trim() || 'all',
+        title: String(tcId || 'Compliance test'),
+        status: 'failed',
+        error: sanitized,
+        details: [{ step: 'Execution failed', passed: false, reason: sanitized }],
+        _debug: rawMessage,
+      }, { suite: normalizedSuite, tcId }),
+      recordings: [],
+    };
+  }
+}
+
+async function processRealtimeComplianceRun(runId) {
+  const initialSnapshot = getRealtimeComplianceSnapshot(runId);
+  if (!initialSnapshot) return;
+
+  const snapshot = { ...initialSnapshot };
+  snapshot.status = 'running';
+  snapshot.startedAt = snapshot.startedAt || new Date().toISOString();
+  snapshot.updatedAt = new Date().toISOString();
+  saveRealtimeComplianceSnapshot(snapshot);
+  broadcastRealtimeComplianceEvent(runId, 'snapshot', sanitizeRealtimeComplianceSnapshot(snapshot));
+
+  const runConfig = realtimeComplianceRunSecrets.get(runId) || {};
+  const suite = normalizeComplianceSuite(snapshot.suite);
+  const mastersToRun = Array.isArray(snapshot.masterNames) ? snapshot.masterNames : [];
+  const tcIdsToRun = Array.isArray(snapshot.tcIds) ? snapshot.tcIds : [];
+
+  try {
+    let sequence = Number(snapshot?.summary?.completed || 0);
+    let stopped = false;
+    for (let mi = 0; mi < mastersToRun.length; mi += 1) {
+      const masterName = mastersToRun[mi];
+      for (let ti = 0; ti < tcIdsToRun.length; ti += 1) {
+        if (isRealtimeStopRequested(runId)) {
+          stopped = true;
+          break;
+        }
+        const tcId = tcIdsToRun[ti];
+        snapshot.currentMaster = masterName;
+        snapshot.currentTcId = tcId;
+        snapshot.currentMasterIndex = mi;
+        snapshot.currentTcIndex = ti;
+        snapshot.progressMessage = `Running ${tcId} (${suite}) on ${masterName} (${mi + 1}/${mastersToRun.length}, test ${ti + 1}/${tcIdsToRun.length})`;
+        snapshot.updatedAt = new Date().toISOString();
+        saveRealtimeComplianceSnapshot(snapshot);
+        broadcastRealtimeComplianceEvent(runId, 'progress', {
+          runId,
+          progressMessage: snapshot.progressMessage,
+          currentMaster: masterName,
+          currentTcId: tcId,
+          summary: snapshot.summary,
+        });
+        broadcastRealtimeComplianceEvent(runId, 'snapshot', sanitizeRealtimeComplianceSnapshot(snapshot));
+
+        const single = await runRealtimeComplianceSingleCase({
+          runId,
+          suite,
+          loginUrl: runConfig.loginUrl,
+          username: runConfig.username,
+          password: runConfig.password,
+          username2: runConfig.username2,
+          password2: runConfig.password2,
+          masterName,
+          tcId,
+          showBrowser: runConfig.showBrowser,
+        });
+
+        if (isRealtimeStopRequested(runId)) {
+          stopped = true;
+        }
+
+        const normalizedResult = normalizeRealtimeComplianceResultPayload(single.result, { suite, tcId });
+        const resultEntry = {
+          ...normalizedResult,
+          suite,
+          masterName,
+          requestedMaster: masterName,
+          requestedTcId: tcId,
+          createdAt: new Date().toISOString(),
+          sequence: sequence + 1,
+          masterIndex: mi,
+          tcIndex: ti,
+          recordings: single.recordings || [],
+        };
+
+        snapshot.results.push(resultEntry);
+        sequence += 1;
+        snapshot.summary.completed = sequence;
+        const status = normalizeRealtimeComplianceStatus(resultEntry?.status);
+        if (status === 'passed') snapshot.summary.passed += 1;
+        else if (status === 'blocked') snapshot.summary.blocked += 1;
+        else if (status === 'not-performed') snapshot.summary.notPerformed = Number(snapshot.summary.notPerformed || 0) + 1;
+        else snapshot.summary.failed += 1;
+        snapshot.updatedAt = new Date().toISOString();
+
+        appendRealtimeComplianceReportEntry({
+          runId,
+          suite,
+          masterName,
+          result: resultEntry,
+          fallbackTcId: tcId,
+          sequence,
+          masterIndex: mi,
+          tcIndex: ti,
+        });
+
+        saveRealtimeComplianceSnapshot(snapshot);
+        broadcastRealtimeComplianceEvent(runId, 'tc_result', {
+          runId,
+          result: resultEntry,
+          summary: snapshot.summary,
+        });
+        broadcastRealtimeComplianceEvent(runId, 'snapshot', sanitizeRealtimeComplianceSnapshot(snapshot));
+      }
+
+      if (stopped) break;
+
+      broadcastRealtimeComplianceEvent(runId, 'master_complete', {
+        runId,
+        masterName,
+        masterIndex: mi,
+        summary: snapshot.summary,
+      });
+    }
+
+    if (stopped) {
+      for (let mi = 0; mi < mastersToRun.length; mi += 1) {
+        const masterName = mastersToRun[mi];
+        for (let ti = 0; ti < tcIdsToRun.length; ti += 1) {
+          const tcId = tcIdsToRun[ti];
+          const alreadyExists = snapshot.results.some((entry) => entry?.masterName === masterName && entry?.requestedTcId === tcId);
+          if (alreadyExists) continue;
+          const notPerformedEntry = buildNotPerformedComplianceResult({
+            suite,
+            masterName,
+            tcId,
+            sequence: sequence + 1,
+            masterIndex: mi,
+            tcIndex: ti,
+          });
+          snapshot.results.push(notPerformedEntry);
+          sequence += 1;
+          snapshot.summary.completed = sequence;
+          snapshot.summary.notPerformed = Number(snapshot.summary.notPerformed || 0) + 1;
+
+          appendRealtimeComplianceReportEntry({
+            runId,
+            suite,
+            masterName,
+            result: notPerformedEntry,
+            fallbackTcId: tcId,
+            sequence,
+            masterIndex: mi,
+            tcIndex: ti,
+          });
+
+          broadcastRealtimeComplianceEvent(runId, 'tc_result', {
+            runId,
+            result: notPerformedEntry,
+            summary: snapshot.summary,
+          });
+        }
+      }
+    }
+
+    snapshot.status = stopped ? 'stopped' : 'completed';
+    snapshot.currentMaster = '';
+    snapshot.currentTcId = '';
+    snapshot.currentMasterIndex = -1;
+    snapshot.currentTcIndex = -1;
+    snapshot.progressMessage = stopped ? 'Compliance run stopped by user.' : 'Compliance run completed.';
+    snapshot.completedAt = new Date().toISOString();
+    snapshot.updatedAt = snapshot.completedAt;
+    saveRealtimeComplianceSnapshot(snapshot);
+    broadcastRealtimeComplianceEvent(runId, stopped ? 'run_stopped' : 'run_complete', sanitizeRealtimeComplianceSnapshot(snapshot));
+    broadcastRealtimeComplianceEvent(runId, 'snapshot', sanitizeRealtimeComplianceSnapshot(snapshot));
+    realtimeComplianceRunSecrets.delete(runId);
+    clearRealtimeRunTask(runId);
+  } catch (error) {
+    const message = String(error?.message || 'Compliance run failed');
+    snapshot.status = 'failed';
+    snapshot.error = message;
+    snapshot.progressMessage = message;
+    snapshot.completedAt = new Date().toISOString();
+    snapshot.updatedAt = snapshot.completedAt;
+    saveRealtimeComplianceSnapshot(snapshot);
+    broadcastRealtimeComplianceEvent(runId, 'run_failed', {
+      runId,
+      error: message,
+      snapshot: sanitizeRealtimeComplianceSnapshot(snapshot),
+    });
+    broadcastRealtimeComplianceEvent(runId, 'snapshot', sanitizeRealtimeComplianceSnapshot(snapshot));
+    realtimeComplianceRunSecrets.delete(runId);
+    clearRealtimeRunTask(runId);
+  }
+}
+
+app.post('/api/compliance/runs', (req, res) => {
+  const suite = normalizeComplianceSuite(req.body?.suite || process.env.QT_SUITE || 'DI');
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const username = req.body?.username || process.env.QT_USER || 'dhruvi';
+  const password = req.body?.password || process.env.QT_PASS || '';
+  const username2 = req.body?.username2 || process.env.QT_USER2 || username;
+  const password2 = req.body?.password2 || process.env.QT_PASS2 || password;
+  const showBrowser = req.body?.showBrowser !== false;
+  const masterNames = expandRealtimeComplianceMasterNames(req.body || {});
+  const tcIds = expandRealtimeComplianceTcIds(suite, req.body?.tcIds || [req.body?.tcId || '']);
+  const total = masterNames.length * tcIds.length;
+  const runId = buildRealtimeComplianceRunId();
+  const clientToken = buildRealtimeComplianceClientToken();
+  const nowIso = new Date().toISOString();
+
+  const snapshot = {
+    runId,
+    clientToken,
+    suite,
+    status: 'running',
+    createdAt: nowIso,
+    startedAt: nowIso,
+    updatedAt: nowIso,
+    completedAt: '',
+    progressMessage: 'Compliance run queued.',
+    currentMaster: '',
+    currentTcId: '',
+    currentMasterIndex: -1,
+    currentTcIndex: -1,
+    masterNames,
+    tcIds,
+    results: [],
+    summary: {
+      total,
+      completed: 0,
+      passed: 0,
+      failed: 0,
+      blocked: 0,
+      notPerformed: 0,
+    },
+    runConfig: {
+      suite,
+      loginUrl: String(loginUrl),
+      username: String(username),
+      username2: String(username2),
+      showBrowser: !!showBrowser,
+    },
+    requestMeta: {
+      suite,
+      loginUrl: String(loginUrl),
+      username: String(username),
+      username2: String(username2),
+      showBrowser: !!showBrowser,
+      masterNames,
+      tcIds,
+    },
+  };
+
+  realtimeComplianceRunSecrets.set(runId, {
+    suite,
+    loginUrl: String(loginUrl),
+    username: String(username),
+    password: String(password),
+    username2: String(username2),
+    password2: String(password2),
+    showBrowser: !!showBrowser,
+  });
+  realtimeComplianceRunTasks.set(runId, { stopRequested: false, child: null });
+  saveRealtimeComplianceSnapshot(snapshot);
+  setImmediate(() => {
+    processRealtimeComplianceRun(runId).catch((error) => {
+      const current = getRealtimeComplianceSnapshot(runId);
+      if (!current || isRealtimeComplianceTerminal(current.status)) return;
+      current.status = 'failed';
+      current.error = String(error?.message || 'Compliance run failed');
+      current.progressMessage = current.error;
+      current.completedAt = new Date().toISOString();
+      current.updatedAt = current.completedAt;
+      saveRealtimeComplianceSnapshot(current);
+      broadcastRealtimeComplianceEvent(runId, 'run_failed', {
+        runId,
+        error: current.error,
+        snapshot: sanitizeRealtimeComplianceSnapshot(current),
+      });
+      realtimeComplianceRunSecrets.delete(runId);
+      clearRealtimeRunTask(runId);
+    });
+  });
+
+  return res.status(202).json({
+    runId,
+    clientToken,
+    status: snapshot.status,
+  });
+});
+
+app.get('/api/compliance/runs/:runId', (req, res) => {
+  const runId = String(req.params?.runId || '').trim();
+  const clientToken = String(req.query?.clientToken || '').trim();
+  const access = verifyRealtimeComplianceAccess(runId, clientToken);
+  if (!access.ok) return res.status(access.code).json({ message: access.message });
+  return res.json(sanitizeRealtimeComplianceSnapshot(access.snapshot));
+});
+
+app.post('/api/compliance/runs/:runId/stop', async (req, res) => {
+  const runId = String(req.params?.runId || '').trim();
+  const clientToken = String(req.body?.clientToken || req.query?.clientToken || '').trim();
+  const access = verifyRealtimeComplianceAccess(runId, clientToken);
+  if (!access.ok) return res.status(access.code).json({ message: access.message });
+
+  const snapshot = { ...access.snapshot };
+  if (isRealtimeComplianceTerminal(snapshot.status)) {
+    return res.json({
+      runId,
+      status: snapshot.status,
+      alreadyTerminal: true,
+      snapshot: sanitizeRealtimeComplianceSnapshot(snapshot),
+    });
+  }
+
+  markRealtimeStopRequested(runId);
+  const killed = await killRealtimeChildProcess(runId);
+  snapshot.progressMessage = 'Stop requested. Finalizing results...';
+  snapshot.updatedAt = new Date().toISOString();
+  saveRealtimeComplianceSnapshot(snapshot);
+  broadcastRealtimeComplianceEvent(runId, 'progress', {
+    runId,
+    progressMessage: snapshot.progressMessage,
+    currentMaster: snapshot.currentMaster,
+    currentTcId: snapshot.currentTcId,
+    summary: snapshot.summary,
+  });
+  broadcastRealtimeComplianceEvent(runId, 'snapshot', sanitizeRealtimeComplianceSnapshot(snapshot));
+
+  return res.json({
+    runId,
+    status: 'stopping',
+    killed,
+  });
+});
+
+app.get('/api/compliance/runs/:runId/stream', (req, res) => {
+  const runId = String(req.params?.runId || '').trim();
+  const clientToken = String(req.query?.clientToken || '').trim();
+  const access = verifyRealtimeComplianceAccess(runId, clientToken);
+  if (!access.ok) return res.status(access.code).json({ message: access.message });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  let clients = realtimeComplianceSseClients.get(runId);
+  if (!clients) {
+    clients = new Set();
+    realtimeComplianceSseClients.set(runId, clients);
+  }
+  clients.add(res);
+
+  writeRealtimeComplianceSseEvent(res, 'snapshot', sanitizeRealtimeComplianceSnapshot(access.snapshot));
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': keep-alive\n\n');
+    } catch {
+      // Ignore dead socket write errors.
+    }
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    const currentClients = realtimeComplianceSseClients.get(runId);
+    if (!currentClients) return;
+    currentClients.delete(res);
+    if (currentClients.size === 0) {
+      realtimeComplianceSseClients.delete(runId);
+    }
+  });
 });
 
 // ─── Template Workflow: Get last run state (for Resume) ───────────────────────

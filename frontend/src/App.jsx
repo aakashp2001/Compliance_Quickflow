@@ -93,7 +93,7 @@ function scoreAliasMatch(fieldAliases, masterAliases) {
       }
 
       if (fieldAlias.includes(masterAlias)) {
-        // Prefer cases like "timezonename" -> "timezone" over tiny accidental substrings.
+        // Prefer stepslike "timezonename" -> "timezone" over tiny accidental substrings.
         const bonus = masterAlias.length >= 4 ? 80 : 0;
         best = Math.max(best, bonus);
       }

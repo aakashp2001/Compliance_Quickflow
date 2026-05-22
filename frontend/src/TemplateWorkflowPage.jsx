@@ -3,7 +3,7 @@ import { runTemplateWorkflow, getLastWorkflowRun } from './api/client';
 
 const STEP_ORDER = [
   'login', 'createSite', 'createApp', 'createTemplate',
-  'createSubTemplate', 'assignWorkflow',
+  'createSubTemplate', 'assignWorkflow', 'selectAppUnderSite', 'auditTrail',
 ];
 
 const STEP_LABELS = {
@@ -13,6 +13,8 @@ const STEP_LABELS = {
   createTemplate:     '4. Create Template',
   createSubTemplate:  '5. Create Sub-Template',
   assignWorkflow:     '6. Template Workflow — Select & Add New',
+  selectAppUnderSite: '7. Switch App Under Site',
+  auditTrail:         '8. Verify Audit Trail',
 };
 
 const STATUS_ICON  = { passed: '✅', failed: '❌', skipped: '⏭', pending: '○', running: '⏳' };
@@ -103,7 +105,7 @@ export default function TemplateWorkflowPage() {
       <header className="page-header">
         <h1>Template Workflow</h1>
         <p className="muted">
-          Full E2E: Site → App → Template → Sub-Template → Workflow Assignment
+          Full E2E: Site → App → Template → Sub-Template → Workflow Assignment → App Switch → Audit Check
         </p>
       </header>
 

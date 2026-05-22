@@ -16,9 +16,9 @@ const { chromium } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const { collectStableFormFields } = require('./helpers/formDiscovery');
-const { smartFillOffcanvasForm, refreshStamp } = require('./helpers/smartFiller');
+const { smartFillOffcanvasForm, refreshStamp, guidDigits, guidToken } = require('./helpers/smartFiller');
 const { readFieldValue } = require('./helpers/formFiller');
-const { inferPrimaryRecordIdentifier, verifyAuditTrailEntry } = require('./helpers/auditTrail');
+const { inferPrimaryRecordIdentifier, verifyAuditTrailEntry, verifyEachFieldIndividually } = require('./helpers/auditTrail');
 const { execSync } = require('child_process');
 
 const OVERLAY_SCRIPT = `
@@ -662,7 +662,7 @@ async function getActiveOffcanvasSelector(page) {
     const activeRoot = scored[0]?.root;
     if (!activeRoot) return null;
 
-    const uid = `_pw_active_offcanvas_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const uid = `_pw_active_offcanvas_${guidToken(16)}`;
     activeRoot.setAttribute('data-pw-active-offcanvas', uid);
     return `[data-pw-active-offcanvas="${uid}"]`;
   }).catch(() => null);
@@ -845,9 +845,9 @@ function buildRandomUpdateReason() {
     'to reflect approved operational changes',
   ];
 
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const pick = (arr) => arr[Number(guidDigits(2)) % arr.length];
   const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
-  return `${pick(why)} ${pick(what)} (${stamp})`;
+  return `${pick(why)} ${pick(what)} (${stamp}, ${guidToken(8)})`;
 }
 
 async function handleReasonRequiredModal(page, fallbackReason = '') {
@@ -1924,6 +1924,74 @@ function normalizeValueForCompare(value) {
   return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function isSiteMaster(masterName) {
+  const normalized = String(masterName || '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
+  return normalized === 'site';
+}
+
+function extractExistingSiteValues(existingDetails) {
+  const rows = Array.isArray(existingDetails?.rows) ? existingDetails.rows : [];
+  const names = new Set();
+  const codes = new Set();
+
+  for (const row of rows) {
+    for (const [key, rawValue] of Object.entries(row || {})) {
+      const value = String(rawValue || '').trim();
+      if (!value) continue;
+      const keyText = String(key || '').toLowerCase();
+      if (/(^|\s|_|-)(site\s*name|name)(\s|_|-|$)/i.test(keyText)) {
+        names.add(normalizeValueForCompare(value));
+      }
+      if (/(^|\s|_|-)(site\s*code|code)(\s|_|-|$)/i.test(keyText)) {
+        codes.add(normalizeValueForCompare(value));
+      }
+    }
+  }
+
+  return { names, codes };
+}
+
+function buildSiteCreatePrefilledValues(stamp, existingNameSet = new Set(), existingCodeSet = new Set()) {
+  let siteStamp = String(stamp || '').trim() || refreshStamp();
+  let siteName = `AUTO-SITE-${siteStamp}`;
+  let siteCode = `ST${guidToken(8)}`;
+  let safety = 0;
+
+  while ((existingNameSet.has(normalizeValueForCompare(siteName))
+      || existingCodeSet.has(normalizeValueForCompare(siteCode)))
+      && safety < 25) {
+    safety += 1;
+    siteStamp = refreshStamp();
+    siteName = `AUTO-SITE-${siteStamp}`;
+    siteCode = `ST${guidToken(8)}`;
+  }
+
+  // Add random numbers to all fields to ensure uniqueness and pass validation
+  const randomSuffix = guidToken(12);
+  const pinSuffix = guidDigits(5);
+  
+  return {
+    Name: siteName,
+    'Site Name': siteName,
+    'Site Code': siteCode,
+    Code: siteCode,
+    'Country Name': 'India',
+    Country: 'India',
+    'Time Zone Name': 'India ( +05:30 )',
+    'Time Zone': 'India ( +05:30 )',
+    Address: `42, Pharma Park Road, Ahmedabad ${randomSuffix}`,
+    'vAddress1': `42, Pharma Park Road, Ahmedabad ${randomSuffix}`,
+    City: 'Ahmedabad',
+    State: 'Gujarat',
+    'PIN Code': `380${pinSuffix}`,
+    Pin: `380${pinSuffix}`,
+    'Postal Code': `380${pinSuffix}`,
+    'Remark': `Created for QA workflow validation. ${randomSuffix}`,
+    'Description': `Created for QA workflow validation. ${randomSuffix}`,
+    'vRemarks': `Created for QA workflow validation. ${randomSuffix}`,
+  };
+}
+
 async function collectExistingTableDetails(page, maxRows = 80) {
   return page.evaluate((limit) => {
     const rows = Array.from(document.querySelectorAll('.dt-scroll-body tbody tr, .dataTables_scrollBody tbody tr')).slice(0, limit);
@@ -1943,6 +2011,43 @@ async function collectExistingTableDetails(page, maxRows = 80) {
 
     return { headers, rows: data };
   }, maxRows).catch(() => ({ headers: [], rows: [] }));
+}
+
+async function snapshotRecordDetails(page, targetRecordName = '') {
+  const snapshotValues = {};
+  let opened = false;
+
+  try {
+    await openFirstEdit(page, targetRecordName);
+    opened = true;
+
+    const editFields = await collectStableFormFields(page);
+    console.log(`[SNAPSHOT] Reading ${editFields.length} fields from saved record "${targetRecordName}"...`);
+
+    for (const field of editFields) {
+      const key = String(field?.displayName || field?.id || '').trim();
+      if (!key) continue;
+      if (/password|confirm\s*password/i.test(key)) continue;
+
+      try {
+        const value = await readFieldValue(page, field.idx, field);
+        const text = String(value ?? '').trim();
+        if (!text) continue;
+        snapshotValues[key] = text;
+      } catch {
+        // Skip unreadable fields in the snapshot.
+      }
+    }
+  } finally {
+    if (opened) {
+      await page.keyboard.press('Escape').catch(() => { });
+      await page.waitForTimeout(350);
+      await dismissBlockingOverlays(page).catch(() => false);
+    }
+  }
+
+  console.log(`[SNAPSHOT] Captured ${Object.keys(snapshotValues).length} saved field values from record.`);
+  return snapshotValues;
 }
 
 function buildCreateRetryPrefilledValues(fields, existingDetails, stamp) {
@@ -1972,11 +2077,11 @@ function buildCreateRetryPrefilledValues(fields, existingDetails, stamp) {
     }).slice(0, 2);
 
   const makeUniqueText = (base) => {
-    let value = `${base}${stamp}`;
+    let value = `${base}${guidToken(16)}`;
     let tries = 0;
     while (existingValues.has(normalizeValueForCompare(value)) && tries < 20) {
       tries += 1;
-      value = `${base}${stamp}${tries}`;
+      value = `${base}${guidToken(16)}${tries}`;
     }
     existingValues.add(normalizeValueForCompare(value));
     return value;
@@ -1990,11 +2095,11 @@ function buildCreateRetryPrefilledValues(fields, existingDetails, stamp) {
 
     // Special handling for Sequence No. fields
     if (/sequence\s*no|seq\s*no|seqno|sequence/i.test(label.toLowerCase())) {
-      let seqVal = String(Math.floor(100000 + Math.random() * 899999));
+      let seqVal = guidDigits(10);
       let safety = 0;
       while (existingValues.has(normalizeValueForCompare(seqVal)) && safety < 20) {
         safety += 1;
-        seqVal = String(Math.floor(100000 + Math.random() * 899999));
+        seqVal = guidDigits(10);
       }
       prefilled[label] = seqVal;
       existingValues.add(normalizeValueForCompare(seqVal));
@@ -2002,20 +2107,20 @@ function buildCreateRetryPrefilledValues(fields, existingDetails, stamp) {
     }
 
     if (type === 'email' || /email/.test(label.toLowerCase())) {
-      const email = `qa.${token.toLowerCase()}.${stamp.toLowerCase()}@pharmatest.in`;
+      const email = `qa.${token.toLowerCase()}.${guidToken(16).toLowerCase()}@pharmatest.in`;
       prefilled[label] = existingValues.has(normalizeValueForCompare(email))
-        ? `qa.${token.toLowerCase()}.${stamp.toLowerCase()}1@pharmatest.in`
+        ? `qa.${token.toLowerCase()}.${guidToken(16).toLowerCase()}@pharmatest.in`
         : email;
       existingValues.add(normalizeValueForCompare(prefilled[label]));
       continue;
     }
 
     if (type === 'tel' || /mobile|phone|contact/.test(label.toLowerCase())) {
-      let mobile = `9${Math.floor(100000000 + Math.random() * 899999999)}`;
+      let mobile = `9${guidDigits(9)}`;
       let safety = 0;
       while (existingValues.has(normalizeValueForCompare(mobile)) && safety < 20) {
         safety += 1;
-        mobile = `9${Math.floor(100000000 + Math.random() * 899999999)}`;
+        mobile = `9${guidDigits(9)}`;
       }
       prefilled[label] = mobile;
       existingValues.add(normalizeValueForCompare(mobile));
@@ -2023,11 +2128,11 @@ function buildCreateRetryPrefilledValues(fields, existingDetails, stamp) {
     }
 
     if (type === 'number' || type === 'decimal') {
-      let numeric = String(Math.floor(100000 + Math.random() * 899999));
+      let numeric = guidDigits(10);
       let safety = 0;
       while (existingValues.has(normalizeValueForCompare(numeric)) && safety < 20) {
         safety += 1;
-        numeric = String(Math.floor(100000 + Math.random() * 899999));
+        numeric = guidDigits(10);
       }
       prefilled[label] = numeric;
       existingValues.add(normalizeValueForCompare(numeric));
@@ -2047,6 +2152,7 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
   await openCreateForm(page);
 
   const mergedAuditTrail = {};
+  const siteMaster = isSiteMaster(masterName);
   const maxAttempts = 5; // increased to allow duplicate-retry attempts
   const invalidRoles = new Set(); // Track roles that don't have app assignments
   const maxRoleRetries = 2; // Limit role-specific retries to prevent browser crashes
@@ -2055,6 +2161,8 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
   let lastError = null;
   let lastDiscoveredFields = [];
   let duplicateRetryPrefilledValues = null;
+  let existingSiteNames = new Set();
+  let existingSiteCodes = new Set();
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -2063,7 +2171,11 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
       console.log(`[CREATE] Discovered ${fields.length} fields before fill (attempt ${attempt}/${maxAttempts})`);
 
       console.log('[CREATE] Filling fields...');
+      const siteCreatePrefilledValues = siteMaster
+        ? buildSiteCreatePrefilledValues(refreshStamp(), existingSiteNames, existingSiteCodes)
+        : null;
       const attemptPrefilledValues = {
+        ...(siteCreatePrefilledValues && typeof siteCreatePrefilledValues === 'object' ? siteCreatePrefilledValues : {}),
         ...(createPrefilledValues && typeof createPrefilledValues === 'object' ? createPrefilledValues : {}),
         ...(duplicateRetryPrefilledValues && typeof duplicateRetryPrefilledValues === 'object' ? duplicateRetryPrefilledValues : {}),
       };
@@ -2154,7 +2266,14 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
         }
 
         const existingDetails = await collectExistingTableDetails(page, 80);
-        duplicateRetryPrefilledValues = buildCreateRetryPrefilledValues(lastDiscoveredFields, existingDetails, newStamp);
+        if (siteMaster) {
+          const siteValues = extractExistingSiteValues(existingDetails);
+          existingSiteNames = new Set([...existingSiteNames, ...siteValues.names]);
+          existingSiteCodes = new Set([...existingSiteCodes, ...siteValues.codes]);
+          duplicateRetryPrefilledValues = buildSiteCreatePrefilledValues(newStamp, existingSiteNames, existingSiteCodes);
+        } else {
+          duplicateRetryPrefilledValues = buildCreateRetryPrefilledValues(lastDiscoveredFields, existingDetails, newStamp);
+        }
         const detailCount = Array.isArray(existingDetails?.rows) ? existingDetails.rows.length : 0;
         const overrideCount = Object.keys(duplicateRetryPrefilledValues || {}).length;
         console.log(`[CREATE] Collected ${detailCount} existing row details and prepared ${overrideCount} unique override fields for create retry.`);
@@ -2201,6 +2320,11 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
   const recordName = await page.evaluate(() => window.recordID || '').catch(() => '')
     || inferPrimaryRecordIdentifier(mergedAuditTrail)
     || await getFirstRecordName(page);
+  const createdRecordDetails = await snapshotRecordDetails(page, recordName).catch((error) => {
+    console.warn(`[CREATE] Could not snapshot saved record details: ${error?.message || error}`);
+    return {};
+  });
+  const auditSourceDetails = Object.keys(createdRecordDetails).length > 0 ? createdRecordDetails : mergedAuditTrail;
   let auditVerification = null;
   if (verifyAudit) {
     if (isUserMaster(masterName)) {
@@ -2217,12 +2341,15 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
       operation: 'create',
       recordName,
       recordID: recordName,
-      auditTrail: mergedAuditTrail,
+      auditTrail: auditSourceDetails,
+      strict: false,
     });
-    if (auditVerification.comparison && !auditVerification.comparison.passed) {
-      console.warn(`[CREATE] Audit trail mismatch detected: ${auditVerification.comparison.mismatchCount} differences`);
+    if (auditVerification.fieldByFieldResults && !auditVerification.fieldByFieldResults.passed) {
+      const s = auditVerification.fieldByFieldResults.summary;
+      console.warn(`[CREATE] ✗ Field verification: ${s.passed} passed, ${s.failed} failed, ${s.errors || 0} errors`);
     } else if (auditVerification.verified) {
-      console.log(`[CREATE] ✓ Audit Trail verified (source: ${auditVerification.source})`);
+      const s = auditVerification.fieldByFieldResults?.summary;
+      console.log(`[CREATE] ✓ Audit Trail verified — ${s ? `${s.passed}/${s.total} fields passed` : `source: ${auditVerification.source}`}`);
     } else {
       console.warn(`[CREATE] Audit trail verification incomplete: ${auditVerification.reason || (auditVerification.missing || []).join(', ') || 'unknown reason'}`);
     }
@@ -2234,6 +2361,7 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
     operation: 'create',
     recordName,
     auditTrail: mergedAuditTrail,
+    createdRecordDetails: auditSourceDetails,
     alertMessage: alertMsg,
     fieldCount: Object.keys(mergedAuditTrail).length,
     auditVerification,
@@ -2432,6 +2560,7 @@ async function updateRecord(page, masterName, baseURL, verifyAudit = false, audi
       recordID: recordName,
       auditTrail,
       reason: saveResult.reasonText,
+      strict: false,
     });
     if (auditVerification.comparison && !auditVerification.comparison.passed) {
       console.warn(`[UPDATE] Audit trail mismatch detected: ${auditVerification.comparison.mismatchCount} differences`);
@@ -2526,6 +2655,7 @@ async function deleteRecord(page, masterName, baseURL, verifyAudit = false, audi
       recordName,
       recordID: recordName,
       reason: deleteResult.reasonText,
+      strict: false,
     });
     if (auditVerification.comparison && !auditVerification.comparison.passed) {
       console.warn(`[DELETE] Audit trail mismatch detected: ${auditVerification.comparison.mismatchCount} differences`);
@@ -2689,19 +2819,25 @@ async function run() {
     for (const op of results.operations) {
       const v = op.auditVerification;
       if (!v) continue;
-      if (v.comparison && !v.comparison.passed) {
+      const fieldByFieldFailed = v.fieldByFieldResults && v.fieldByFieldResults.passed === false;
+      if ((v.comparison && !v.comparison.passed) || fieldByFieldFailed) {
+        const failedFieldRows = (v.fieldValidationResults || []).filter((item) => String(item?.status || '').toUpperCase() !== 'PASS');
         const mismatchReport = {
           operation: op.operation,
           recordName: op.recordName,
-          reason: `Audit mismatch: ${v.comparison.mismatchCount} differences found`,
-          mismatches: v.comparison.mismatches,
-          notFoundInAudit: v.comparison.notFoundInAudit,
-          matchCount: v.comparison.matchCount,
-          mismatchCount: v.comparison.mismatchCount,
+          reason: fieldByFieldFailed
+            ? `Audit mismatch: ${v.fieldByFieldResults.summary.failed + (v.fieldByFieldResults.summary.errors || 0)} field checks failed`
+            : `Audit mismatch: ${v.comparison.mismatchCount} differences found`,
+          mismatches: v.comparison?.mismatches || [],
+          notFoundInAudit: v.comparison?.notFoundInAudit || [],
+          matchCount: v.comparison?.matchCount || 0,
+          mismatchCount: v.comparison?.mismatchCount || failedFieldRows.length,
+          fieldValidationResults: v.fieldValidationResults || [],
+          createdRecordDetails: op.createdRecordDetails || {},
           screenshotPath: v.screenshotPath || '',
         };
         results.auditMismatches.push(mismatchReport);
-        console.warn(`[REPORT] Audit mismatch for ${op.operation}: ${v.comparison.mismatchCount} differences, screenshot=${v.screenshotPath || 'none'}`);
+        console.warn(`[REPORT] Audit mismatch for ${op.operation}: ${mismatchReport.mismatchCount} differences, screenshot=${v.screenshotPath || 'none'}`);
       }
       if (!v.verified) {
         const screenshotPath = v.screenshotPath || await captureFailureScreenshot(page, context, masterName, op.operation).catch(() => '');
@@ -2709,6 +2845,8 @@ async function run() {
           operation: op.operation,
           recordName: op.recordName,
           reason: v.reason || `Missing: ${(v.missing || []).join(', ')}`,
+          fieldValidationResults: v.fieldValidationResults || [],
+          createdRecordDetails: op.createdRecordDetails || {},
           screenshotPath,
         });
         console.warn(`[REPORT] Audit verification failed for ${op.operation}: ${v.reason || (v.missing || []).join(', ')}`);

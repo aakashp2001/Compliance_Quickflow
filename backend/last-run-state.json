@@ -1,14 +1,34 @@
 {
-  "savedAt": "2026-05-06T10:29:53.959Z",
-  "status": "completed-with-issues",
+  "savedAt": "2026-05-14T10:48:36.125Z",
+  "status": "failed",
   "flowState": {
-    "appName": "AUTO-APP-MOTW7A3W",
-    "siteName": "AUTO-SITE-MOTW7A3W",
+    "appName": "",
+    "siteName": "AUTO-SITE-69F125A4B7C0438E",
     "countryName": "India",
     "timeZoneName": "India ( +05:30 )",
-    "templateName": "AUTO-TPL-MOTWXE23",
+    "templateName": "",
     "subTemplateName": "",
-    "workflowName": "AUTO-WF-MOTWXE23"
+    "workflowName": "",
+    "screenshots": [
+      {
+        "step": "createSite",
+        "path": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-44-19-010Z-template-workflow-createsite-failed.png",
+        "fileName": "2026-05-14T10-44-19-010Z-template-workflow-createsite-failed.png",
+        "capturedAt": "2026-05-14T10:44:19.354Z"
+      },
+      {
+        "step": "createApp",
+        "path": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-47-20-859Z-template-workflow-createapp-failed.png",
+        "fileName": "2026-05-14T10-47-20-859Z-template-workflow-createapp-failed.png",
+        "capturedAt": "2026-05-14T10:47:21.482Z"
+      },
+      {
+        "step": "createApp",
+        "path": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-48-33-566Z-template-workflow-createapp-failed.png",
+        "fileName": "2026-05-14T10-48-33-566Z-template-workflow-createapp-failed.png",
+        "capturedAt": "2026-05-14T10:48:34.320Z"
+      }
+    ]
   },
   "steps": {
     "login": {
@@ -17,34 +37,32 @@
     },
     "createSite": {
       "status": "skipped",
-      "message": "Skipped — resuming from createTemplate"
+      "message": "Skipped — resuming from createApp"
     },
     "createApp": {
-      "status": "skipped",
-      "message": "Skipped — resuming from createTemplate"
+      "status": "failed",
+      "message": "Save did not complete — offcanvas still open. Check for validation errors.",
+      "screenshotPath": "D:\\Master_Template_Automation\\quickflow_automation_script\\playwright-tests\\test-reports\\2026-05-14T10-48-33-566Z-template-workflow-createapp-failed.png"
     },
     "createTemplate": {
-      "status": "passed",
-      "message": "Saved",
-      "templateName": "AUTO-TPL-MOTWXE23"
+      "status": "pending",
+      "message": ""
     },
     "createSubTemplate": {
-      "status": "failed",
-      "message": "[FORCE-SELECT] Could not find \"AUTO-TPL-MOTWXE23\" in any offcanvas dropdown. Is the record created and saved before this step?"
+      "status": "pending",
+      "message": ""
     },
     "assignWorkflow": {
-      "status": "passed",
-      "message": "Saved",
-      "wfName": "AUTO-WF-MOTWXE23"
+      "status": "pending",
+      "message": ""
     },
     "selectAppUnderSite": {
-      "status": "passed",
-      "message": "Navigated to https://ipdev.quickflow.in/Template-Workflow",
-      "url": "https://ipdev.quickflow.in/Template-Workflow"
+      "status": "pending",
+      "message": ""
     },
     "auditTrail": {
-      "status": "failed",
-      "message": "page.waitForTimeout: Target page, context or browser has been closed"
+      "status": "pending",
+      "message": ""
     }
   }
 }

@@ -81,11 +81,6 @@ function RecordingsPage({ masters = [] }) {
                     {item.kind && item.kind !== 'unknown' && <span>Type: {item.kind}</span>}
                     {item.masterName && <span>Master: {item.masterName}</span>}
                     {item.operation && <span>Operation: {item.operation}</span>}
-                    {item.kind === 'crud' && (
-                      <span className={item.verifyAuditTrail ? 'recording-audit-badge recording-audit-badge--on' : 'recording-audit-badge recording-audit-badge--off'}>
-                        {item.verifyAuditTrail ? 'Audit trail checked' : 'Audit trail not checked'}
-                      </span>
-                    )}
                     {item.sourceMaster && item.targetMaster && <span>Compare: {item.sourceMaster} &gt; {item.targetMaster}</span>}
                     {item.fieldName && <span>Field: {item.fieldName}</span>}
                     {item.templateName && <span>Template: {item.templateName}</span>}

@@ -120,13 +120,15 @@ function getDisplayReason(report) {
 function getLogBullets(report) {
   if (isTemplateWorkflowReport(report)) {
     const status = String(report?.status || '').toLowerCase();
+    const specificReason = status !== 'passed' ? getDisplayReason(report) : '';
     return [
       status === 'passed'
         ? 'Template workflow completed successfully.'
         : 'Template workflow did not complete successfully.',
+      specificReason && specificReason !== '-' ? `Failure reason: ${specificReason}` : '',
       'The test creates a site, app, main template, child sub template, workflow assignment, app switch, and audit check.',
       'Screenshots and recordings are shown in their own columns when they are available.',
-    ];
+    ].filter(Boolean);
   }
 
   const source = String(report?.logs || report?.error || '').trim();
@@ -151,7 +153,45 @@ function formatOperation(value) {
     .join(' ');
 }
 
-function getTestCaseBullets(report, reasonText) {
+function getExpectedResult(report) {
+  const op = String(report?.operation || '').toLowerCase().trim();
+  const masterLabel = report?.masterName ? report.masterName : 'selected master';
+  const auditRows = getAuditComparisonRows(report);
+  const auditSummary = getAuditComparisonSummary(auditRows);
+
+  if (isTemplateWorkflowReport(report)) {
+    return 'The full template workflow should complete successfully, and each major step should be visible in the report output.';
+  }
+  if (op === 'create') {
+    if (auditSummary) {
+      return auditSummary.failed > 0
+        ? `The record should be created in ${masterLabel}, and all created field values should appear in the audit trail.`
+        : `The record should be created in ${masterLabel}, and all created field values should match the audit trail.`;
+    }
+    return `A new record should be created successfully in ${masterLabel}.`;
+  }
+  if (op === 'update') {
+    return `The updated values should be saved successfully for ${masterLabel} and reflected in the audit trail.`;
+  }
+  if (op === 'delete') {
+    return `The selected record should be deleted successfully from ${masterLabel}.`;
+  }
+  if (op === 'duplicate-check') {
+    return `The system should block duplicate values for ${masterLabel}.`;
+  }
+  if (op === 'mandatory-check' || op === 'mandatory-fields') {
+    return `The system should prevent save when required fields are empty in ${masterLabel}.`;
+  }
+  if (op === 'compare-field') {
+    return `The compared source and target field data should remain consistent for ${masterLabel}.`;
+  }
+  if (op === 'audit-verified' || op === 'audit-check') {
+    return `The executed operation should have matching evidence in the audit trail for ${masterLabel}.`;
+  }
+  return `${formatOperation(report?.operation)} should complete successfully for ${masterLabel}.`;
+}
+
+function getTestCaseBullets(report, expectedResult) {
   const op = String(report?.operation || '').toLowerCase().trim();
   const masterLabel = report?.masterName ? `the ${report.masterName} master` : 'the selected master';
   const bullets = [];
@@ -163,6 +203,8 @@ function getTestCaseBullets(report, reasonText) {
     bullets.push('4. Create a main template and select Template Type as Main');
     bullets.push('5. Create a sub template and select Template Type as Child');
     bullets.push('6. Assign a workflow only after the sub template is created');
+    bullets.push('7. Switch to the selected app under the selected site');
+    bullets.push('8. Verify audit trail entries for workflow changes');
   } else if (op === 'create') {
     bullets.push('1. Add a new record');
     bullets.push('2. Fill all fields');
@@ -186,7 +228,7 @@ function getTestCaseBullets(report, reasonText) {
     bullets.push('1. Read dropdown options from source form');
     bullets.push('2. Read records from target master');
     bullets.push('3. Compare both data sets');
-  } else if (op === 'audit-verified') {
+  } else if (op === 'audit-verified' || op === 'audit-check') {
     bullets.push(`1. Open Audit Trail for ${masterLabel}`);
     bullets.push('2. Match record details with executed operation');
     bullets.push('3. Verify audit evidence is present');
@@ -194,12 +236,90 @@ function getTestCaseBullets(report, reasonText) {
     bullets.push(`Test: ${formatOperation(report?.operation).toLowerCase()}`);
   }
 
-  if (reasonText && reasonText !== '-') {
-    const shortReason = reasonText.length > 100 ? `${reasonText.slice(0, 97)}...` : reasonText;
-    bullets.push(`Expected Result: ${shortReason}`);
+  if (expectedResult && expectedResult !== '-') {
+    const shortExpected = expectedResult.length > 100 ? `${expectedResult.slice(0, 97)}...` : expectedResult;
+    bullets.push(`Expected Result: ${shortExpected}`);
   }
 
   return bullets;
+}
+
+function getTestScenario(report) {
+  const op = String(report?.operation || '').toLowerCase().trim();
+  const masterLabel = report?.masterName ? report.masterName : 'selected master';
+
+  if (isTemplateWorkflowReport(report)) {
+    return 'Execute complete template workflow: login, site creation, app creation, template creation, sub-template creation, workflow assignment, app switch, and audit verification.';
+  }
+  if (op === 'create') {
+    return `Validate that a new record can be created successfully for ${masterLabel}.`;
+  }
+  if (op === 'update') {
+    return `Validate that an existing record can be updated successfully for ${masterLabel}.`;
+  }
+  if (op === 'delete') {
+    return `Validate that an existing record can be deleted successfully for ${masterLabel}.`;
+  }
+  if (op === 'duplicate-check') {
+    return `Validate duplicate protection by attempting to save an existing value in ${masterLabel}.`;
+  }
+  if (op === 'mandatory-check' || op === 'mandatory-fields') {
+    return `Validate mandatory field enforcement in ${masterLabel} by submitting an incomplete form.`;
+  }
+  if (op === 'compare-field') {
+    return `Validate field consistency between source form options and target master records for ${masterLabel}.`;
+  }
+  if (op === 'audit-verified' || op === 'audit-check') {
+    return `Validate audit trail evidence for executed ${formatOperation(report?.verifiedOperation || report?.operation).toLowerCase()} operation in ${masterLabel}.`;
+  }
+  return `Validate ${formatOperation(report?.operation).toLowerCase()} flow for ${masterLabel}.`;
+}
+
+function getAuditComparisonRows(report) {
+  const rows = Array.isArray(report?.auditFieldResults) ? report.auditFieldResults : [];
+  return rows.map((item, index) => ({
+    key: `${report?.id || 'report'}-${index}`,
+    fieldName: item?.fieldName || item?.field || `Field ${index + 1}`,
+    createdValue: item?.expected ?? '',
+    auditValue: item?.actual ?? '',
+    status: String(item?.status || '').toUpperCase() || 'UNKNOWN',
+    recordIDMatch: item?.recordIDMatch,
+    reason: item?.reason || item?.error || '',
+  }));
+}
+
+function displayAuditValue(value) {
+  const text = String(value ?? '').trim();
+  return text || '-';
+}
+
+function formatAuditComparisonLine(item) {
+  return `${displayAuditValue(item?.fieldName)} - ${displayAuditValue(item?.createdValue)} - ${displayAuditValue(item?.auditValue)}`;
+}
+
+function isAuditTrailReport(report) {
+  if (report?.status === 'audit-mismatch') return true;
+  if (report?.operation === 'audit-verified') return true;
+  if (report?.operation === 'audit-check') return true;
+  return report?.auditVerified === true && report?.verifiedOperation;
+}
+
+function getReportOperationLabel(report) {
+  const masterName = String(report?.masterName || '').trim();
+  const prefix = masterName || 'Master';
+  const operation = String(report?.operation || '').toLowerCase();
+
+  if (isAuditTrailReport(report)) return `${prefix}-Audit Check`;
+  if (operation === 'mandatory-check' || operation === 'mandatory-fields') return `${prefix}-Mandatory Check`;
+  return formatOperation(report?.operation);
+}
+
+function getAuditComparisonSummary(rows) {
+  if (!rows.length) return null;
+  const passed = rows.filter((row) => row.status === 'PASS').length;
+  const failed = rows.filter((row) => row.status !== 'PASS').length;
+  const failedFields = rows.filter((row) => row.status !== 'PASS').map((row) => row.fieldName);
+  return { total: rows.length, passed, failed, failedFields };
 }
 
 function findMatchingRecording(report, recordings) {
@@ -240,7 +360,7 @@ function findMatchingRecording(report, recordings) {
         && (recOp === opLower || recOp === 'all');
     }
 
-    if (opLower === 'audit-mismatch') {
+    if (opLower === 'audit-mismatch' || opLower === 'audit-check') {
       return recKind === 'crud' && recMaster === masterLower;
     }
 
@@ -280,7 +400,11 @@ function downloadReport(report, matchedRec) {
   const statusColor = report.status === 'passed' ? '#22c55e' : report.status === 'audit-mismatch' ? '#f59e0b' : '#ef4444';
   const statusLabel = report.status === 'passed' ? '✓ PASSED' : report.status === 'audit-mismatch' ? '⚠ AUDIT MISMATCH' : '✗ FAILED';
   const reason = getDisplayReason(report);
-  const testCases = getTestCaseBullets(report, reason);
+  const expectedResult = getExpectedResult(report);
+  const testCases = getTestCaseBullets(report, expectedResult);
+  const testScenario = getTestScenario(report);
+  const auditComparisonRows = getAuditComparisonRows(report);
+  const auditComparisonSummary = getAuditComparisonSummary(auditComparisonRows);
   const logs = String(report.logs || report.error || '').trim();
   const logLines = logs.split(/\r?\n/).filter(Boolean);
   const escapeHtml = (value) => String(value || '')
@@ -538,20 +662,47 @@ function downloadReport(report, matchedRec) {
   </div>
 
   <div class="card">
-    <div class="card-title">Test Cases</div>
+    <div class="card-title">🧪 Test Scenario</div>
     <table>
-      ${testCases.map((line, index) => row(`Step ${index + 1}`, line)).join('')}
+      ${row('Scenario', testScenario)}
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Test Steps</div>
+    <table>
+      ${testCases.map((line, index) => row(`Test Step ${index + 1}`, line)).join('')}
     </table>
   </div>
 
   <div class="card">
     <div class="card-title">📝 Result</div>
     <table>
+      ${row('Expected Result', expectedResult)}
       ${row('Reason', reason)}
       ${row('Screenshot', report.screenshotUrl ? `<a href="${report.screenshotUrl}" target="_blank">${report.screenshotUrl}</a>` : emptyText(report, 'No screenshot saved'))}
       ${row('Recording', matchedRec ? `<a href="${matchedRec.url}" target="_blank">${matchedRec.url}</a>` : emptyText(report, 'No recording found'))}
     </table>
   </div>
+
+  ${auditComparisonRows.length ? `
+  <div class="card">
+    <div class="card-title">🔎 Created Record vs Audit Trail</div>
+    <table>
+      ${row('Summary', `${auditComparisonSummary.passed}/${auditComparisonSummary.total} fields matched`)}
+      ${auditComparisonSummary.failedFields.length ? row('Not Matched Fields', escapeHtml(auditComparisonSummary.failedFields.join(', '))) : ''}
+      ${auditComparisonRows.map((item, index) => row(
+        `Field ${index + 1}`,
+        `<strong>Comparison:</strong> ${escapeHtml(formatAuditComparisonLine(item))}`
+        + `<br><strong>Field:</strong> ${escapeHtml(displayAuditValue(item.fieldName))}`
+        + `<br><strong>Actual Saved Data:</strong> ${escapeHtml(displayAuditValue(item.createdValue))}`
+        + `<br><strong>Audit Trail Data:</strong> ${escapeHtml(displayAuditValue(item.auditValue))}`
+        + `<br><strong>Status:</strong> ${escapeHtml(item.status)}`
+        + `${item.recordIDMatch === false ? '<br><strong>Record ID:</strong> MISMATCH' : ''}`
+        + `${item.reason ? `<br><strong>Note:</strong> ${escapeHtml(item.reason)}` : ''}`
+      )).join('')}
+    </table>
+  </div>` : ''}
 
   ${discoveredLinks.length ? `
   <div class="card">
@@ -616,6 +767,137 @@ function downloadReport(report, matchedRec) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+function downloadAllReports(reports, recordings) {
+  const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  const buildAuditSummaryHtml = (report) => {
+    const auditRows = getAuditComparisonRows(report);
+    const auditSummary = getAuditComparisonSummary(auditRows);
+    if (!auditRows.length || !auditSummary) return '-';
+
+    const failedLine = auditSummary.failedFields.length
+      ? `<div class="audit-failed"><strong>Not matched:</strong> ${escapeHtml(auditSummary.failedFields.join(', '))}</div>`
+      : '';
+
+    return `
+      <div class="audit-summary">
+        <div><strong>${auditSummary.passed}/${auditSummary.total} fields matched</strong></div>
+        ${failedLine}
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Actual Saved Data</th>
+              <th>Audit Trail Data</th>
+              <th>Match</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${auditRows.map((item) => {
+              const matched = item.status === 'PASS';
+              return `
+                <tr class="${matched ? 'audit-pass' : 'audit-fail'}">
+                  <td title="${escapeHtml(formatAuditComparisonLine(item))}">${escapeHtml(displayAuditValue(item.fieldName))}</td>
+                  <td>${escapeHtml(displayAuditValue(item.createdValue))}</td>
+                  <td>${escapeHtml(displayAuditValue(item.auditValue))}</td>
+                  <td>${matched ? 'Yes' : 'No'}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  };
+
+  const rows = (Array.isArray(reports) ? reports : []).map((report) => {
+    const matchedRec = findMatchingRecording(report, recordings);
+    const reason = getDisplayReason(report);
+    const expectedResult = getExpectedResult(report);
+    const statusLabel = report.status === 'passed' ? 'PASS' : report.status === 'audit-mismatch' ? 'AUDIT' : 'FAIL';
+    const auditSummaryHtml = buildAuditSummaryHtml(report);
+
+    return `
+      <tr>
+        <td>${escapeHtml(report.createdAt ? new Date(report.createdAt).toLocaleString() : '-')}</td>
+        <td>${escapeHtml(report.masterName || '-')}</td>
+        <td>${escapeHtml(getReportOperationLabel(report))}</td>
+        <td>${escapeHtml(statusLabel)}</td>
+        <td>${escapeHtml(expectedResult)}</td>
+        <td>${escapeHtml(reason)}</td>
+        <td>${auditSummaryHtml}</td>
+        <td>${report.screenshotUrl ? `<a href="${report.screenshotUrl}" target="_blank" rel="noreferrer">Screenshot</a>` : '-'}</td>
+        <td>${matchedRec?.url ? `<a href="${matchedRec.url}" target="_blank" rel="noreferrer">Recording</a>` : '-'}</td>
+      </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>All Test Reports</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; color: #172033; background: #f4f7fb; }
+    .shell { max-width: 1400px; margin: 0 auto; background: #fff; border: 1px solid #d7e0ee; border-radius: 16px; padding: 24px; }
+    h1 { margin-bottom: 8px; }
+    .muted { color: #5d708f; margin-bottom: 20px; }
+    .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat { padding: 8px 12px; border-radius: 999px; font-weight: 700; background: #eef4ff; color: #204a87; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border: 1px solid #d7e0ee; padding: 10px; text-align: left; vertical-align: top; }
+    th { background: #f7faff; }
+    .audit-summary { min-width: 320px; }
+    .audit-failed { margin: 6px 0; color: #8a1f1f; }
+    .audit-table { margin-top: 8px; font-size: 12px; }
+    .audit-table th, .audit-table td { padding: 6px; }
+    .audit-pass { background: #f0fff4; }
+    .audit-fail { background: #fff5f5; }
+    a { color: #0b63d9; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <h1>Automation Test Reports</h1>
+    <p class="muted">Generated on ${new Date().toLocaleString()}</p>
+    <div class="stats">
+      <span class="stat">Total: ${reports.length}</span>
+      <span class="stat">Passed: ${reports.filter((r) => r.status === 'passed').length}</span>
+      <span class="stat">Failed: ${reports.filter((r) => r.status === 'failed').length}</span>
+      <span class="stat">Audit Issues: ${reports.filter((r) => r.status === 'audit-mismatch').length}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Master</th>
+          <th>Operation</th>
+          <th>Status</th>
+          <th>Expected Result</th>
+          <th>Reason</th>
+          <th>Audit Summary</th>
+          <th>Screenshot</th>
+          <th>Recording</th>
+        </tr>
+      </thead>
+      <tbody>${rows || '<tr><td colspan="9">No reports available</td></tr>'}</tbody>
+    </table>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `all-test-reports-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.html`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 function TestReportPage({ masters = [] }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -630,6 +912,11 @@ function TestReportPage({ masters = [] }) {
   const RECORDINGS_PER_PAGE = 8;
   const [reportsPage, setReportsPage] = useState(1);
   const [recordingsPage, setRecordingsPage] = useState(1);
+  // Search state
+  const [masterSearchText, setMasterSearchText] = useState('');
+  const [operationSearchText, setOperationSearchText] = useState('');
+  const [appliedMasterSearch, setAppliedMasterSearch] = useState('');
+  const [appliedOperationSearch, setAppliedOperationSearch] = useState('');
 
   async function loadReports() {
     setLoading(true);
@@ -669,11 +956,17 @@ function TestReportPage({ masters = [] }) {
   const complianceCount = reports.filter((r) => String(r.operation || '').toLowerCase().includes('compliance')).length;
 
   const filteredReports = reports.filter((report) => {
-    if (statusFilter === 'all') return true;
-    if (statusFilter === 'passed') return report.status === 'passed';
-    if (statusFilter === 'failed') return report.status === 'failed';
-    if (statusFilter === 'audit-mismatch') return report.status === 'audit-mismatch';
-    if (statusFilter === 'compliance') return String(report.operation || '').toLowerCase().includes('compliance');
+    if (statusFilter === 'passed' && report.status !== 'passed') return false;
+    if (statusFilter === 'failed' && report.status !== 'failed') return false;
+    if (statusFilter === 'audit-mismatch' && report.status !== 'audit-mismatch') return false;
+
+    const masterNeedle = appliedMasterSearch.trim().toLowerCase();
+    const operationNeedle = appliedOperationSearch.trim().toLowerCase();
+    const masterText = String(report.masterName || '').toLowerCase();
+    const operationText = `${report.operation || ''} ${formatOperation(report.operation)}`.toLowerCase();
+
+    if (masterNeedle && !masterText.includes(masterNeedle)) return false;
+    if (operationNeedle && !operationText.includes(operationNeedle)) return false;
     return true;
   });
 
@@ -694,6 +987,26 @@ function TestReportPage({ masters = [] }) {
   const passedCount = reports.filter((r) => r.status === 'passed').length;
   const failedCount = reports.filter((r) => r.status === 'failed').length;
   const auditMismatchCount = reports.filter((r) => r.status === 'audit-mismatch').length;
+  const hasColumnSearch = Boolean(appliedMasterSearch || appliedOperationSearch);
+  const masterSuggestions = Array.from(new Set([
+    ...masters.map((master) => typeof master === 'string' ? master : master?.name || master?.label || master?.masterName || ''),
+    ...reports.map((report) => report.masterName || ''),
+  ].map((value) => String(value || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const operationSuggestions = Array.from(new Set(reports
+    .map((report) => formatOperation(report.operation))
+    .filter((value) => value && value !== 'Not available'))).sort((a, b) => a.localeCompare(b));
+
+  function applyColumnSearch(kind) {
+    if (kind === 'master') setAppliedMasterSearch(masterSearchText.trim());
+    if (kind === 'operation') setAppliedOperationSearch(operationSearchText.trim());
+  }
+
+  function resetColumnSearch() {
+    setMasterSearchText('');
+    setOperationSearchText('');
+    setAppliedMasterSearch('');
+    setAppliedOperationSearch('');
+  }
 
   // Recordings pagination
   const totalRecordingsPages = Math.max(1, Math.ceil(recordings.length / RECORDINGS_PER_PAGE));
@@ -720,56 +1033,121 @@ function TestReportPage({ masters = [] }) {
               </div>
             )}
           </div>
-          <button type="button" className="btn-sm" onClick={loadReports} disabled={loading}>
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {!!filteredReports.length && (
+              <button
+                type="button"
+                className="btn-sm"
+                onClick={() => downloadAllReports(filteredReports, recordings)}
+              >
+                Download All Reports
+              </button>
+            )}
+            <button type="button" className="btn-sm" onClick={loadReports} disabled={loading}>
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {reports.length > 0 && (
-          <div className="filter-chip-row">
-            <button
-              type="button"
-              className={`filter-chip ${statusFilter === 'all' ? 'filter-chip--active' : ''}`}
-              onClick={() => setStatusFilter('all')}
-            >
-              All ({reports.length})
-            </button>
-            <button
-              type="button"
-              className={`filter-chip filter-chip--pass ${statusFilter === 'passed' ? 'filter-chip--active' : ''}`}
-              onClick={() => setStatusFilter('passed')}
-            >
-              Passed ({passedCount})
-            </button>
-            <button
-              type="button"
-              className={`filter-chip filter-chip--fail ${statusFilter === 'failed' ? 'filter-chip--active' : ''}`}
-              onClick={() => setStatusFilter('failed')}
-            >
-              Failed ({failedCount})
-            </button>
-            <button
-              type="button"
-              className={`filter-chip filter-chip--audit ${statusFilter === 'audit-mismatch' ? 'filter-chip--active' : ''}`}
-              onClick={() => setStatusFilter('audit-mismatch')}
-              
-            >
-              Audit Issues ({auditMismatchCount})
-            </button>
-            <button
-              type="button"
-              className={`filter-chip filter-chip--compliance ${statusFilter === 'compliance' ? 'filter-chip--active' : ''}`}
-              onClick={() => setStatusFilter('compliance')}
-            >
-              Compliance ({complianceCount})
-            </button>
-          </div>
+          <>
+            <div className="filter-chip-row">
+              <button
+                type="button"
+                className={`filter-chip ${statusFilter === 'all' ? 'filter-chip--active' : ''}`}
+                onClick={() => setStatusFilter('all')}
+              >
+                All ({reports.length})
+              </button>
+              <button
+                type="button"
+                className={`filter-chip filter-chip--pass ${statusFilter === 'passed' ? 'filter-chip--active' : ''}`}
+                onClick={() => setStatusFilter('passed')}
+              >
+                Passed ({passedCount})
+              </button>
+              <button
+                type="button"
+                className={`filter-chip filter-chip--fail ${statusFilter === 'failed' ? 'filter-chip--active' : ''}`}
+                onClick={() => setStatusFilter('failed')}
+              >
+                Failed ({failedCount})
+              </button>
+              <button
+                type="button"
+                className={`filter-chip filter-chip--audit ${statusFilter === 'audit-mismatch' ? 'filter-chip--active' : ''}`}
+                onClick={() => setStatusFilter('audit-mismatch')}
+              >
+                Audit Issues ({auditMismatchCount})
+              </button>
+            </div>
+
+            <div className="test-report-search-row">
+              <label className="test-report-search-field">
+                <span>Master</span>
+                <div className="test-report-search-control">
+                  <input
+                    type="search"
+                    list="test-report-master-options"
+                    value={masterSearchText}
+                    onChange={(event) => setMasterSearchText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') applyColumnSearch('master');
+                    }}
+                    placeholder="Search master"
+                  />
+                  <button type="button" className="btn-sm" onClick={() => applyColumnSearch('master')}>
+                    Search
+                  </button>
+                </div>
+                <datalist id="test-report-master-options">
+                  {masterSuggestions.map((masterName) => (
+                    <option key={masterName} value={masterName} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label className="test-report-search-field">
+                <span>Operation</span>
+                <div className="test-report-search-control">
+                  <input
+                    type="search"
+                    list="test-report-operation-options"
+                    value={operationSearchText}
+                    onChange={(event) => setOperationSearchText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') applyColumnSearch('operation');
+                    }}
+                    placeholder="Search operation"
+                  />
+                  <button type="button" className="btn-sm" onClick={() => applyColumnSearch('operation')}>
+                    Search
+                  </button>
+                </div>
+                <datalist id="test-report-operation-options">
+                  {operationSuggestions.map((operationName) => (
+                    <option key={operationName} value={operationName} />
+                  ))}
+                </datalist>
+              </label>
+
+              {hasColumnSearch && (
+                <button type="button" className="btn-sm-outline test-report-clear-search" onClick={resetColumnSearch}>
+                  Clear search
+                </button>
+              )}
+            </div>
+          </>
         )}
 
         {error && <p className="status-error">{error}</p>}
 
         {!loading && reports.length === 0 && !error && (
           <p className="muted">No test reports found yet.</p>
+        )}
+
+        {!loading && reports.length > 0 && filteredReports.length === 0 && (
+          <p className="muted">No reports match the selected search.</p>
         )}
 
         {!!filteredReports.length && (
@@ -782,58 +1160,84 @@ function TestReportPage({ masters = [] }) {
                     <th className="test-report-col-time">Time</th>
                     <th className="test-report-col-master">Master</th>
                     <th className="test-report-col-operation">Operation</th>
-                    <th className="test-report-testcases-col">Test Cases</th>
+                    <th className="test-report-teststeps -col">Test Steps</th>
                     <th className="test-report-reason-col">Reason</th>
                     <th className="test-report-logs-col">Logs</th>
                     <th className="test-report-col-url">Screenshot</th>
                     <th className="test-report-col-url">Recording URL</th>
-                    {/* <th className="test-report-col-download">Download</th> */}
                     <th style={{ whiteSpace: 'nowrap' }}>Download</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedReports.map((report) => {
                     const reasonText = getDisplayReason(report);
+                    const expectedResult = getExpectedResult(report);
                     const logBullets = getLogBullets(report);
-                    const testCaseBullets = getTestCaseBullets(report, reasonText);
+                    const testCaseBullets = getTestCaseBullets(report, expectedResult);
+                    const auditComparisonRows = getAuditComparisonRows(report);
+                    const auditComparisonSummary = getAuditComparisonSummary(auditComparisonRows);
                     const matchedRec = findMatchingRecording(report, recordings);
                     const statusBadgeStyle = report.status === 'passed'
                       ? { backgroundColor: '#22c55e', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500' }
                       : report.status === 'audit-mismatch'
                         ? { backgroundColor: '#f59e0b', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500' }
                         : { backgroundColor: '#ef4444', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500' };
-                    const statusText = report.status === 'passed' ? 'Pass' : report.status === 'audit-mismatch' ? 'Audit' : 'Fail';
+                    const statusText = report.status === 'passed' ? '✓ Pass' : report.status === 'audit-mismatch' ? '⚠ Audit' : '✗ Fail';
                     return (
                       <tr key={report.id}>
                         <td><span style={statusBadgeStyle}>{statusText}</span></td>
                         <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : emptyText(report)}</td>
                         <td>{report.masterName || emptyText(report)}</td>
-                        <td>{formatOperation(report.operation)}</td>
-                        <td className="test-report-testcases-cell">
+                        <td>{getReportOperationLabel(report)}</td>
+                        <td className="test-report-teststeps -cell">
+                        <details className="test-report-logs" open={false}>
+                          <summary>View steps ({testCaseBullets.length})</summary>
+                          <div className="test-report-case-lines">
+                            {testCaseBullets.map((line, idx) => (
+                              <div key={`${report.id}-case-${idx}`}>{line}</div>
+                            ))}
+                          </div>
+                        </details>
+                      </td>
+                      <td className="test-report-reason-cell">{reasonText}</td>
+                      <td className="test-report-logs-cell">
+                        {auditComparisonRows.length > 0 && (
                           <details className="test-report-logs" open={false}>
-                            <summary>View steps ({testCaseBullets.length})</summary>
+                            <summary>
+                              Audit comparison ({auditComparisonSummary.passed}/{auditComparisonSummary.total} matched)
+                            </summary>
+                            {auditComparisonSummary.failedFields.length > 0 && (
+                              <div className="test-report-case-lines" style={{ marginBottom: 10 }}>
+                                <div><strong>Not matched fields:</strong> {auditComparisonSummary.failedFields.join(', ')}</div>
+                              </div>
+                            )}
                             <div className="test-report-case-lines">
-                              {testCaseBullets.map((line, idx) => (
-                                <div key={`${report.id}-case-${idx}`}>{line}</div>
+                              {auditComparisonRows.map((item) => (
+                                <div key={item.key} style={{ marginBottom: 10 }}>
+                                  <div><strong>{item.status === 'PASS' ? '✓' : '✗'} {formatAuditComparisonLine(item)}</strong></div>
+                                  <div>Field: {displayAuditValue(item.fieldName)}</div>
+                                  <div>Actual Saved Data: {displayAuditValue(item.createdValue)}</div>
+                                  <div>Audit Trail Data: {displayAuditValue(item.auditValue)}</div>
+                                  {item.recordIDMatch === false && <div>Record ID: mismatch</div>}
+                                  {item.reason && <div>Note: {item.reason}</div>}
+                                </div>
                               ))}
                             </div>
                           </details>
-                        </td>
-                        <td className="test-report-reason-cell">{reasonText}</td>
-                        <td className="test-report-logs-cell">
-                          {logBullets.length > 0 ? (
-                            <details className="test-report-logs" open={false}>
-                              <summary>View logs ({logBullets.length})</summary>
-                              <ul className="test-report-log-list">
-                                {logBullets.map((line, idx) => (
-                                  <li key={`${report.id}-log-${idx}`}>{line}</li>
-                                ))}
-                              </ul>
-                            </details>
-                          ) : (
-                            emptyText(report, 'No log details')
-                          )}
-                        </td>
+                        )}
+                        {logBullets.length > 0 ? (
+                          <details className="test-report-logs" open={false}>
+                            <summary>View logs ({logBullets.length})</summary>
+                            <ul className="test-report-log-list">
+                              {logBullets.map((line, idx) => (
+                                <li key={`${report.id}-log-${idx}`}>{line}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        ) : (
+                          !auditComparisonRows.length && emptyText(report, 'No log details')
+                        )}
+                      </td>
                         <td className="test-report-url-cell">
                           {report.screenshotUrl ? (
                             <a href={report.screenshotUrl} target="_blank" rel="noreferrer" className="test-report-link">

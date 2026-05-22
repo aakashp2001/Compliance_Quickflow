@@ -67,6 +67,6 @@ We will heavily reuse `helpers/formDiscovery.js`, `helpers/smartFiller.js`, and 
 - **Verification**: Fill source fields and extract the resulting value from the read-only calculated field. Assert that `Price(50) * Qty(4) === Total(200)`.
 
 ## Verification Plan
-1. Ensure all `TC-DI-*` test cases pass individually.
+1. Ensure all `TC-DI-*` test stepspass individually.
 2. Verify that existing `crud-master.js` and TestHive React flows remain 100% unaffected.
 3. Test edge-case scenarios (like the 5-minute wait and concurrent lock) to ensure they reliably fail if the system misbehaves.
