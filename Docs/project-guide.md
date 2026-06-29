@@ -36,9 +36,29 @@ The most important part of this project is the Playwright layer, because that is
 
 ### Storage style
 
-- In-memory cache for some runtime data in backend
-- JSON file storage for test reports and dependency configuration
-- Screenshot files saved to disk
+- In-memory cache for transient runtime data in the backend
+- Persistent data is stored in MongoDB collections (see `backend/db/storage.js`). The primary collections are:
+   - `masters_cache`
+   - `master_fields_cache`
+   - `test_reports`
+   - `recordings`
+   - `compliance_runs`
+   - `crud_results`
+   - `dependency_configs`
+   - `template_workflow_states`
+
+   A migration helper exists at `backend/scripts/migrate-json-to-mongo.js` to import legacy JSON files that older versions kept under `backend/data/` and a few repo-local state files (for example `playwright-tests/helpers/dependent-dropdowns.json` and `backend/last-run-state.json`). Example migration workflow:
+
+```powershell
+cd backend
+npm install
+# Dry-run to preview how many documents would be imported
+npm run migrate:json-to-mongo:dry
+# Actual import (will upsert into collections listed above)
+npm run migrate:json-to-mongo
+```
+
+After running the migration, artifact files (screenshots/videos) remain on disk under `playwright-tests/test-reports` and are indexed by the backend. The migration script prints a summary of collection counts and any skipped/failed items.
 
 
 ## 3. High-level architecture
@@ -202,7 +222,7 @@ Steps:
 
 1. User selects parent and dependent fields in CRUD page.
 2. Frontend calls backend `PUT /api/dependency-config/:masterName`.
-3. Backend writes the values into `playwright-tests/helpers/dependent-dropdowns.json`.
+3. Backend stores dependency mappings in MongoDB collection `dependency_configs` (legacy file `playwright-tests/helpers/dependent-dropdowns.json` can be migrated using `backend/scripts/migrate-json-to-mongo.js`).
 4. Later, the smart filler reads this file to know how to handle dependent dropdowns.
 
 ### Flow D: Compare a dropdown against another master
@@ -266,7 +286,7 @@ Purpose: show saved failures and audit mismatches.
 Steps:
 
 1. Frontend Test Report page calls `/api/test-reports`.
-2. Backend reads `backend/data/test-reports.json`.
+2. Backend reads persisted test reports from MongoDB collection `test_reports` via the storage layer.
 3. Backend returns the saved entries.
 4. Frontend formats operation, reason, logs, screenshot link, and thumbnail.
 
@@ -468,23 +488,11 @@ Main responsibilities:
 
 This is the central coordination file in the entire repo.
 
-#### `backend/data/test-reports.json`
+#### MongoDB collection `test_reports`
 
-Persistent JSON storage of saved report rows.
+Persistent collection storing saved test-report rows. Each document typically contains:
 
-Each row can contain:
-
-- id
-- masterName
-- operation
-- status
-- reason
-- logs
-- screenshotUrl
-- screenshotFile
-- error
-- timestamps
-- mismatch detail arrays
+- `id`, `masterName`, `operation`, `status`, `reason`, `logs`, `screenshotUrl`, `screenshotFile`, `error`, `createdAt`, and any mismatch/detail arrays.
 
 
 ### 10.3 Playwright entry scripts
@@ -663,11 +671,9 @@ Responsibilities:
 
 This is the most important helper after `crud-master.js`.
 
-#### `playwright-tests/helpers/dependent-dropdowns.json`
+#### Dependency configuration (`dependency_configs` collection)
 
-Configuration file storing known parent and dependent dropdown relationships per master.
-
-Used by `smartFiller.js`.
+Parent/dependent dropdown mappings are now persisted to the `dependency_configs` MongoDB collection and read by the `smartFiller` helpers. If you still have a legacy `playwright-tests/helpers/dependent-dropdowns.json` file, run `backend/scripts/migrate-json-to-mongo.js` to import it.
 
 
 ### 10.5 Generated and runtime files

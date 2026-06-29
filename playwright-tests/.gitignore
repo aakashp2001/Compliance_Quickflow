@@ -18,10 +18,6 @@ playwright/.cache/
 .DS_Store
 Thumbs.db
 
-# Package
-package.json
-package-lock.json
-
 test-reports
 
 # Last-run template workflow flow mirror (written by backend)

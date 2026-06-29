@@ -9,7 +9,7 @@
 
 const { test, expect } = require('@playwright/test');
 const { fillOffcanvasForm } = require('../helpers/formFiller');
-const { verifyAuditTrailEntry } = require('../helpers/auditTrail');
+const { verifyAuditTrailEntryCompliance } = require('./compliance-audit-wrapper');
 const { login, navigateTo, openCreateForm, getActionableSaveButton, clickOptionalYesConfirmation, SEL } = require('../helpers/uiActions');
 
 const OFFCANVAS_SCOPE = `:is(${SEL.offcanvas})`;
@@ -61,7 +61,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     }
     
     // Verify Audit Trail for Create
-    await verifyAuditTrailEntry(page, {
+    await verifyAuditTrailEntryCompliance(page, {
       baseURL: new URL(page.url()).origin,
       masterName: targetMaster,
       operation: 'create',
@@ -96,7 +96,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     await clickOptionalYesConfirmation(page, 2500).catch(() => false);
 
     // Verify Audit Trail for Update (Ensures User & Timestamp logged)
-    await verifyAuditTrailEntry(page, {
+    await verifyAuditTrailEntryCompliance(page, {
       baseURL: new URL(page.url()).origin,
       masterName: targetMaster,
       operation: 'update',
@@ -108,7 +108,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     });
   });
 
-  test('TC-DI-02-01 & TC-DI-02-02: Legibility (Special Characters & Long Strings)', async ({ page }) => {
+  test('TC-DI-02: Legibility (Special Characters & Long Strings)', async ({ page }) => {
     test.info().annotations.push({ type: 'compliance', description: 'Verify data fields store special characters, Unicode, and long strings without truncation or corruption.' });
     
     await login(page, { username: defaultUser, password: defaultPass });
@@ -121,7 +121,13 @@ test.describe('Data Integrity Compliance Suite', () => {
     await firstTextInput.waitFor({ state: 'visible' });
 
     const specialUnicodeStr = "Ärzte & Société";
-    const longString = "AbCdEf12".repeat(32).substring(0, 255); // Exactly 255 chars
+    function _randAlphaNum(len) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let s = '';
+      for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+      return s;
+    }
+    const longString = _randAlphaNum(255); // Exactly 255 chars
 
     await firstTextInput.fill(specialUnicodeStr);
     
@@ -194,28 +200,65 @@ test.describe('Data Integrity Compliance Suite', () => {
     await login(page, { username: defaultUser, password: defaultPass });
     await navigateTo(page, targetMaster);
 
-    await openCreateForm(page);
+    // Capture initial record count before creating
+    const initialCount = await page.locator(SEL.tableRows).count();
 
-    await fillOffcanvasForm(page, targetMaster);
-    
-    // Simulate network disconnect / browser crash before saving
+    await openCreateForm(page);
+    const auditTrail = await fillOffcanvasForm(page, targetMaster);
+
+    // Simulate network disconnect before saving
     console.log('Simulating offline mode / session interruption...');
     await context.setOffline(true);
-    
+
     try {
       const saveBtn = await getActionableSaveButton(page);
       if (saveBtn) await saveBtn.click({ timeout: 5000 });
     } catch (e) {
-      // Expected to fail due to offline
+      // Expected failure due to offline mode
     }
 
-    // Restore network
+    // Restore network connectivity
     await context.setOffline(false);
-    
-    // Ensure the system didn't silently save a partial record during offline state.
+
+    // Wait for connection to re-establish
+    await page.waitForTimeout(10000);
+
+    // Reload page to reflect any changes
     await page.reload();
     await page.waitForSelector(SEL.pageTitle, { timeout: 30000 });
-    expect(true).toBe(true);
+
+    // Verify that no new record was created during offline period
+    const finalCount = await page.locator(SEL.tableRows).count();
+    expect(finalCount).toBe(initialCount);
+
+    // If a record was somehow created, verify its audit trail
+    if (finalCount > initialCount) {
+      // Retrieve the new record ID (assume first row is the new record)
+      const newRecord = await page.evaluate(() => {
+        const rows = document.querySelectorAll('.dt-scroll-body tbody tr:first-child, .dataTables_scrollBody tbody tr:first-child, table tbody tr:first-child');
+        if (!rows.length) return null;
+        const cells = rows[0].querySelectorAll('td');
+        const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.innerText.trim());
+        const data = {};
+        headers.forEach((h, i) => {
+          if (cells[i]) data[h] = cells[i].innerText.trim();
+        });
+        return data;
+      });
+      const recordID = newRecord?.['Record ID'] || newRecord?.['Code'] || newRecord?.['ID'];
+      if (recordID) {
+        await verifyAuditTrailEntryCompliance(page, {
+          baseURL: new URL(page.url()).origin,
+          masterName: targetMaster,
+          operation: 'create',
+          recordName: recordID,
+          recordID,
+          auditTrail,
+          username: defaultUser,
+          masterPerformedOn: null,
+        });
+      }
+    }
   });
 
   test('TC-DI-09-01: Concurrent Edit Conflict Detection', async ({ browser }) => {
@@ -297,7 +340,7 @@ test.describe('Data Integrity Compliance Suite', () => {
     await clickOptionalYesConfirmation(page, 2500).catch(() => false);
 
     // Verify via Audit Trail that 'delete' or 'deactivate' event is captured
-    await verifyAuditTrailEntry(page, {
+    await verifyAuditTrailEntryCompliance(page, {
       baseURL: new URL(page.url()).origin,
       masterName: targetMaster,
       operation: 'delete',

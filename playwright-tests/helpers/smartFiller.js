@@ -6,9 +6,9 @@
  * Metadata-first form filler for CRUD create/update flows.
  */
 
-const fs = require('fs');
-const path = require('path');
 const { randomBytes, randomInt, randomUUID } = require('crypto');
+
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 // Unique stamp per script run — appended to text/name/code values to prevent duplicates.
 let RUN_STAMP = createRunStamp();
@@ -36,11 +36,20 @@ function guidDigits(length = 10) {
   }
   return digits.slice(0, length);
 }
+
+function guidAlpha(length = 12) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
 const { collectStableFormFields } = require('./formDiscovery');
 const { fillField, readFieldValue, waitForDependentFieldsToPopulate } = require('./formFiller');
 
-const DEPENDENCY_CONFIG_PATH = path.resolve(__dirname, 'dependent-dropdowns.json');
 let dependencyConfigCache = null;
+let dependencyConfigPromise = null;
 
 const POOL = {
   country: [
@@ -141,16 +150,30 @@ const POOL = {
   },
 };
 
-function loadDependencyConfig() {
+async function preloadDependencyConfig() {
   if (dependencyConfigCache) return dependencyConfigCache;
-  try {
-    const raw = fs.readFileSync(DEPENDENCY_CONFIG_PATH, 'utf-8');
-    const parsed = JSON.parse(raw);
-    dependencyConfigCache = parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    dependencyConfigCache = {};
+  if (!dependencyConfigPromise) {
+    dependencyConfigPromise = (async () => {
+      const res = await fetch(`${BACKEND_URL}/api/dependency-config`);
+      if (!res.ok) {
+        throw new Error(`GET /api/dependency-config -> HTTP ${res.status}`);
+      }
+      const body = await res.json();
+      const config = body && typeof body.config === 'object' && body.config ? body.config : {};
+      dependencyConfigCache = config;
+      return config;
+    })();
   }
-  return dependencyConfigCache;
+  try {
+    return await dependencyConfigPromise;
+  } catch (error) {
+    dependencyConfigPromise = null;
+    throw error;
+  }
+}
+
+function loadDependencyConfig() {
+  return dependencyConfigCache || {};
 }
 
 function getMasterDependencyConfig(masterName) {
@@ -267,9 +290,17 @@ function shouldUpdateExistingField(field, currentValue) {
   if (isSelectLike(field)) return false;
 
   const lower = normalizeLabel(field.displayName);
-  if (/record id|recordid|username|login name|password|confirm password|first name|last name|employee code/.test(lower)) return false;
+  // Never update these protected identifier fields
+  if (/record id|recordid|username|login name|password|confirm password|employee code/.test(lower)) return false;
 
-  return /remark|note|comment|description|summary|email|phone|mobile|contact/.test(lower);
+  // Update ALL other editable text/textarea fields — not just a narrow whitelist
+  const elementType = String(field.elementType || '').toLowerCase();
+  if (elementType.includes('text') || elementType.includes('textarea') || elementType.includes('email') || elementType.includes('tel')) {
+    return true;
+  }
+
+  // Fallback: allow fields with names that suggest they are editable content
+  return /remark|note|comment|description|summary|email|phone|mobile|contact|name|title|code|address|city|state|pin|postal|department|designation|role|template|app|site|location|plant|country|timezone/.test(lower);
 }
 
 async function isFormOffcanvasOpen(page) {
@@ -316,7 +347,7 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
   if (elementType === 'number' || elementType === 'decimal') {
     if (/pin|zip|postal/.test(lower)) return pick(POOL.pincode);
     if (/phone|mobile|contact|fax/.test(lower)) return pick(POOL.phone);
-    if (/batch|lot|seq|sequence|serial|sr\.?\s*no|order.*no|priority.*no|identifier|id\b/.test(lower)) return guidDigits(10);
+    if (/batch|lot|seq|sequence|serial|sr\.?\s*no|order.*no|priority.*no|identifier|id\b/.test(lower)) return guidDigits(9);
     if (/amount|price|cost|salary|budget|revenue/.test(lower)) return String(1000 + Number(guidDigits(6)) % 500000);
     if (/age|weight|height|dose|dosage/.test(lower)) return String(10 + Number(guidDigits(3)) % 100);
     if (/quantity|qty|count|strength|potency/.test(lower)) return String(100 + Number(guidDigits(4)) % 1000);
@@ -339,11 +370,12 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
   if (/workflow\s*code/.test(lower)) return `WF${guidToken(6)}${guidDigits(5)}`;
 
   // ── Credential / contact fields ──────────────────────────────────────────────
-  if (/user ?name|login id|user id/.test(lower)) return makeUsername();
+  // Use guidAlpha for name fields to avoid "Only alphabets are allowed" validation
+  if (/user ?name|login id|user id/.test(lower)) return `${pick(['qa', 'user', 'admin', 'test'])}${guidAlpha(12)}`;
   if (/confirm password/.test(lower)) return null;
   if (/password|passcode/.test(lower) || elementType === 'password') return makePassword();
-  if (/first name/.test(lower)) return `${pick(['Arjun', 'Priya', 'Rahul', 'Neha', 'Suresh', 'Pooja', 'Amit', 'Deepa'])}${guidToken(12)}`;
-  if (/last name|surname/.test(lower)) return `${pick(['Sharma', 'Patel', 'Shah', 'Kumar', 'Singh', 'Mehta', 'Joshi', 'Verma', 'Nair', 'Gupta'])}${guidToken(12)}`;
+  if (/first name/.test(lower)) return `${pick(['Arjun', 'Priya', 'Rahul', 'Neha', 'Suresh', 'Pooja', 'Amit', 'Deepa'])}${guidAlpha(12)}`;
+  if (/last name|surname/.test(lower)) return `${pick(['Sharma', 'Patel', 'Shah', 'Kumar', 'Singh', 'Mehta', 'Joshi', 'Verma', 'Nair', 'Gupta'])}${guidAlpha(12)}`;
   if (/email/.test(lower) || elementType === 'email') return pick(POOL.email);
   if (/phone|mobile|contact|fax/.test(lower) || elementType === 'tel') return pick(POOL.phone);
   if (/pin|zip|postal/.test(lower)) return pick(POOL.pincode);
@@ -354,6 +386,7 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
   if (/time\s*zone|timezone|\btz\b/.test(lower)) return uniquePick(POOL.timeZone, existingValues);
   if (/state|province/.test(lower)) return uniquePick(POOL.state, existingValues);
   if (/\bcity\b/.test(lower)) return uniquePick(POOL.city, existingValues);
+  if (/department|dept/.test(lower) && !isSelectLikeType) return `${uniquePick(POOL.department, existingValues)} ${guidToken(8)}`;
   if (/department|dept/.test(lower)) return uniquePick(POOL.department, existingValues);
   if (/designation|position|title|role/.test(lower)) return uniquePick(POOL.designation, existingValues, context.invalidRoles || new Set());
   if (/employee.*type|emp.*type/.test(lower)) return uniquePick(POOL.employeeType, existingValues);
@@ -387,6 +420,11 @@ function resolveSmartValue(displayName, elementType, existingValues = [], contex
       .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join('');
+    // Use alphabetic-only suffix for fields whose names suggest they must be alphabetic
+    const alphaOnly = /name|user|code|title|designation|role|department|description|remark|comment|note|summary/.test(lower);
+    if (alphaOnly) {
+      return `${compact} ${guidAlpha(12)}`;
+    }
     // Add both random token AND random digits for maximum uniqueness
     return `${compact} ${guidToken(16)} ${guidDigits(6)}`;
   }
@@ -490,6 +528,7 @@ async function refillRequiredFields(page, masterName, auditTrail, maxRounds = 2,
       const key = fieldKey(field);
       if (!field.required) continue;
       if (field.id.includes('RecordID') || field.id.includes('RecordId')) continue;
+      if (field.elementType === 'file' || /prn|file\s*upload|upload\s*file/i.test(field.displayName || '')) continue;
       if (field.disabled && !isSelectLike(field)) continue;
 
       // For select-like fields, verify actual current DOM value even if auditTrail says filled.
@@ -543,6 +582,7 @@ async function smartFillOffcanvasForm(page, masterName, providedFields = null, o
     invalidRoles,
     prefilledValues,
   };
+  await preloadDependencyConfig();
   const fields = providedFields || await collectStableFormFields(page);
   process.stderr.write(`[SMART_FILL] Discovered ${fields.length} fields for ${masterName}\n`);
 
@@ -563,6 +603,12 @@ async function smartFillOffcanvasForm(page, masterName, providedFields = null, o
 
     if (field.id.includes('RecordID') || field.id.includes('RecordId')) {
       process.stderr.write(`[SMART_FILL] Skipping #${field.id} (disabled/RecordID)\n`);
+      continue;
+    }
+
+    // Skip all file uploads (e.g., PRN file) — never trigger native file picker
+    if (field.elementType === 'file' || /prn|file\s*upload|upload\s*file/i.test(field.displayName || '')) {
+      process.stderr.write(`[SMART_FILL] Skipping file field "${field.displayName}" (${field.elementType})\n`);
       continue;
     }
 
@@ -610,7 +656,23 @@ async function smartFillOffcanvasForm(page, masterName, providedFields = null, o
         value = await resolveBlockedField(page, masterName, fields, index, field, auditTrail, fillContext);
       }
     } catch (error) {
-      throw new Error(`Failed filling field "${field.displayName}" on ${masterName}: ${error?.message || error}`);
+      const errorMessage = String(error?.message || error);
+      // Navigation during form fill: wait for page to stabilize and check if offcanvas is still open
+      if (/execution context was destroyed|frame was detached|navigation|navigating/i.test(errorMessage)) {
+        process.stderr.write(`[SMART_FILL] Navigation detected while filling "${field.displayName}". Waiting for page to stabilize...\n`);
+        await page.waitForTimeout(1500).catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+        const offcanvasOpen = await isFormOffcanvasOpen(page).catch(() => false);
+        if (!offcanvasOpen) {
+          process.stderr.write(`[SMART_FILL] Offcanvas closed after navigation. Returning partial audit trail (${Object.keys(auditTrail).length} fields filled).\n`);
+          return auditTrail;
+        }
+        // Offcanvas is still open — try reading the current value
+        value = await readFieldValue(page, field.idx, field).catch(() => null);
+        process.stderr.write(`[SMART_FILL] Recovered after navigation. "${field.displayName}" current value: "${value || '(empty)'}"\n`);
+      } else {
+        throw new Error(`Failed filling field "${field.displayName}" on ${masterName}: ${errorMessage}`);
+      }
     }
 
     if (field.required && isEmptyValue(value)) {
@@ -643,4 +705,4 @@ async function smartFillOffcanvasForm(page, masterName, providedFields = null, o
   return auditTrail;
 }
 
-module.exports = { smartFillOffcanvasForm, resolveSmartValue, refreshStamp, guidToken, guidDigits };
+module.exports = { smartFillOffcanvasForm, resolveSmartValue, refreshStamp, guidToken, guidDigits, guidAlpha };

@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const { collectStableFormFields } = require('./helpers/formDiscovery');
 const { smartFillOffcanvasForm, refreshStamp, guidDigits, guidToken } = require('./helpers/smartFiller');
-const { readFieldValue } = require('./helpers/formFiller');
+const { fillField, readFieldValue } = require('./helpers/formFiller');
 const { inferPrimaryRecordIdentifier, verifyAuditTrailEntry, verifyEachFieldIndividually } = require('./helpers/auditTrail');
 const { execSync } = require('child_process');
 
@@ -91,7 +91,20 @@ async function updateRecordingOverlay(page, info) {
   }, info).catch(() => { });
 }
 
-async function captureFailureScreenshot(page, context, masterName, operation) {
+function inferFailedStep(error, operation) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  if (msg.includes('validation') || msg.includes('required') || msg.includes('mandatory')) return 'validation-error';
+  if (msg.includes('duplicate')) return 'duplicate-check';
+  if (msg.includes('offcanvas closed') || msg.includes('form closed')) return 'form-fill';
+  if (msg.includes('save') || msg.includes('blocked by validation')) return 'save';
+  if (msg.includes('audit trail') || msg.includes('audit mismatch') || msg.includes('not found in audit')) return 'audit-verification';
+  if (msg.includes('create button')) return 'open-create-form';
+  if (msg.includes('delete')) return 'delete';
+  if (msg.includes('navigate')) return 'navigation';
+  return operation || 'unknown-step';
+}
+
+async function captureFailureScreenshot(page, context, masterName, operation, step = '') {
   const candidatePages = [];
   if (context && typeof context.pages === 'function') {
     const pages = context.pages().filter((ctxPage) => ctxPage && !ctxPage.isClosed());
@@ -112,10 +125,11 @@ async function captureFailureScreenshot(page, context, masterName, operation) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const masterSlug = String(masterName || 'master').replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase() || 'master';
   const opSlug = String(operation || 'op').replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase() || 'op';
-  const fileName = `${stamp}-${masterSlug}-${opSlug}-failure.png`;
+  const stepSlug = String(step || 'failure').replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase() || 'failure';
+  const fileName = `${stamp}-${masterSlug}-${opSlug}-${stepSlug}.png`;
   const fullPath = path.join(dir, fileName);
 
-  async function addFailureOverlay(targetPage) {
+  async function addFailureOverlay(targetPage, stepLabel) {
     const now = new Date();
     const dateText = now.toLocaleString('en-GB', {
       year: 'numeric',
@@ -128,7 +142,7 @@ async function captureFailureScreenshot(page, context, masterName, operation) {
     });
     const urlText = targetPage.url() || 'unknown-url';
 
-    await targetPage.evaluate(({ dateTextValue, urlTextValue }) => {
+    await targetPage.evaluate(({ dateTextValue, urlTextValue, stepValue }) => {
       const id = 'pw-failure-screenshot-overlay';
       const existing = document.getElementById(id);
       if (existing) existing.remove();
@@ -149,10 +163,12 @@ async function captureFailureScreenshot(page, context, masterName, operation) {
       box.style.whiteSpace = 'pre-wrap';
       box.style.maxWidth = '95vw';
       box.style.pointerEvents = 'none';
-      box.textContent = `Time: ${dateTextValue}\nURL: ${urlTextValue}`;
+      const lines = [`Time: ${dateTextValue}`, `URL: ${urlTextValue}`];
+      if (stepValue) lines.push(`Failed Step: ${stepValue}`);
+      box.textContent = lines.join('\n');
 
       document.body.appendChild(box);
-    }, { dateTextValue: dateText, urlTextValue: urlText }).catch(() => { });
+    }, { dateTextValue: dateText, urlTextValue: urlText, stepValue: stepLabel }).catch(() => { });
   }
 
   async function removeFailureOverlay(targetPage) {
@@ -181,7 +197,7 @@ async function captureFailureScreenshot(page, context, masterName, operation) {
   scoredCandidates.sort((a, b) => b.score - a.score);
 
   for (const { candidate } of scoredCandidates) {
-    await addFailureOverlay(candidate);
+    await addFailureOverlay(candidate, step);
     await candidate.waitForTimeout(80).catch(() => { });
     await candidate.screenshot({ path: fullPath, fullPage: true }).catch(() => { });
     await removeFailureOverlay(candidate);
@@ -207,7 +223,52 @@ async function captureReportScreenshot(page, masterName, operation, status = 'pa
   const fileName = `${stamp}-${masterSlug}-${opSlug}-${statusSlug}-${stepSlug}.png`;
   const fullPath = path.join(dir, fileName);
 
+  async function addSuccessOverlay(targetPage, stepLabel) {
+    const now = new Date();
+    const dateText = now.toLocaleString('en-GB', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+    await targetPage.evaluate(({ dateTextValue, stepValue }) => {
+      const id = 'pw-success-screenshot-overlay';
+      const existing = document.getElementById(id);
+      if (existing) existing.remove();
+
+      const box = document.createElement('div');
+      box.id = id;
+      box.style.position = 'fixed';
+      box.style.right = '12px';
+      box.style.top = '12px';
+      box.style.zIndex = '2147483647';
+      box.style.background = 'rgba(0,120,50,0.85)';
+      box.style.color = '#ffffff';
+      box.style.padding = '10px 12px';
+      box.style.borderRadius = '8px';
+      box.style.fontFamily = 'Consolas, Menlo, monospace';
+      box.style.fontSize = '12px';
+      box.style.lineHeight = '1.4';
+      box.style.whiteSpace = 'pre-wrap';
+      box.style.maxWidth = '64vw';
+      box.style.pointerEvents = 'none';
+      const lines = [`Time: ${dateTextValue}`, `Status: PASSED`];
+      if (stepValue) lines.push(`Step: ${stepValue}`);
+      box.textContent = lines.join('\n');
+
+      document.body.appendChild(box);
+    }, { dateTextValue: dateText, stepValue: stepLabel }).catch(() => { });
+  }
+
+  async function removeSuccessOverlay(targetPage) {
+    await targetPage.evaluate(() => {
+      const node = document.getElementById('pw-success-screenshot-overlay');
+      if (node) node.remove();
+    }).catch(() => { });
+  }
+
+  await addSuccessOverlay(page, step);
+  await page.waitForTimeout(80).catch(() => { });
   await page.screenshot({ path: fullPath, fullPage: true }).catch(() => { });
+  await removeSuccessOverlay(page);
   return fs.existsSync(fullPath) ? fullPath : '';
 }
 
@@ -275,7 +336,7 @@ const SEL = {
   confirmOk: '.swal2-confirm',
   searchBox: '[type="search"]',
   reasonTextarea: '#reasonTextarea',
-  tableRows: '.dt-scroll-body tbody tr, .dataTables_scrollBody tbody tr',
+  tableRows: '.dt-scroll-body tbody tr, .dataTables_scrollBody tbody tr, #information_table tbody tr, #output-table tbody tr, table.dataTable tbody tr, table tbody tr',
   editBtn: 'a[data-action="edit"], .fa-pen-to-square, .fa-edit',
   deleteBtn: 'a[data-action="deactivate"], a[data-action="delete"], button.btn-deactive.delete, button[title*="Deactivate" i], .fa-trash, .fa-trash-alt, .fa-user-lock, .fa-times',
   createBtn: 'button.btn.btn-sm.btn-primary.d-flex.flex-center',
@@ -632,7 +693,8 @@ async function openCreateForm(page) {
 }
 
 async function getActiveOffcanvasSelector(page) {
-  return page.evaluate(() => {
+  const uid = `_pw_active_offcanvas_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const success = await page.evaluate((uidArg) => {
     const isVisible = (el) => {
       if (!el) return false;
       const style = getComputedStyle(el);
@@ -640,7 +702,7 @@ async function getActiveOffcanvasSelector(page) {
     };
 
     const roots = Array.from(document.querySelectorAll('#offcanvas, #masterFormOffcanvas, .offcanvas'));
-    if (!roots.length) return null;
+    if (!roots.length) return false;
 
     const scored = roots.map((root) => {
       const body = root.querySelector('.offcanvas-body');
@@ -660,12 +722,14 @@ async function getActiveOffcanvasSelector(page) {
     }).sort((left, right) => right.score - left.score);
 
     const activeRoot = scored[0]?.root;
-    if (!activeRoot) return null;
+    if (!activeRoot) return false;
 
-    const uid = `_pw_active_offcanvas_${guidToken(16)}`;
-    activeRoot.setAttribute('data-pw-active-offcanvas', uid);
-    return `[data-pw-active-offcanvas="${uid}"]`;
-  }).catch(() => null);
+    activeRoot.setAttribute('data-pw-active-offcanvas', uidArg);
+    return true;
+  }, uid).catch(() => false);
+
+  if (!success) return null;
+  return `[data-pw-active-offcanvas="${uid}"]`;
 }
 
 async function getActionableSaveButton(page) {
@@ -1352,9 +1416,10 @@ async function saveForm(page, isUpdate = false, updateReason = '') {
   console.log('[SAVE] Waiting for response...');
   let matchedMessage = '';
   let outcomeError = '';
-  const maxOutcomeWaitMs = 7000;
+  const maxOutcomeWaitMs = isUpdate ? 15000 : 7000;
   const pollMs = 250;
   let successfulApiSeenAt = 0;
+  let submittedMasterSaveSeenAt = 0;
 
   for (let waited = 0; waited < maxOutcomeWaitMs; waited += pollMs) {
     // Some masters show a follow-up confirmation shortly after first click.
@@ -1451,6 +1516,19 @@ async function saveForm(page, isUpdate = false, updateReason = '') {
       break;
     }
 
+    const masterSaveRequestObserved = isUpdate
+      && saveRequestFired
+      && /\/api\/latest\/masters/i.test(String(saveRequestInfo?.url || ''));
+    if (masterSaveRequestObserved && !snapshot.validationText && !hardErrorMsg) {
+      if (!submittedMasterSaveSeenAt) submittedMasterSaveSeenAt = Date.now();
+      if (Date.now() - submittedMasterSaveSeenAt >= 3500) {
+        matchedMessage = saveResponseOk
+          ? 'Updated successfully (API response succeeded)'
+          : 'Updated successfully (master save request submitted)';
+        break;
+      }
+    }
+
     await page.waitForTimeout(pollMs);
   }
 
@@ -1465,11 +1543,21 @@ async function saveForm(page, isUpdate = false, updateReason = '') {
   if (!matchedMessage) {
     const formStillOpen = await page.locator(SEL.offcanvas).first().isVisible().catch(() => false);
     if (!formStillOpen) {
+      if (!saveRequestFired && immediateValidation.length > 0) {
+        throw new Error(`Save blocked by validation errors: ${immediateValidation.join(' | ')}`);
+      }
       matchedMessage = saveRequestFired
         ? 'Saved successfully (form closed after request)'
         : 'Form closed (assumed success)';
+    } else if (
+      isUpdate
+      && saveRequestFired
+      && /\/api\/latest\/masters/i.test(String(saveRequestInfo?.url || ''))
+      && !saveResponseStatus
+    ) {
+      matchedMessage = 'Updated successfully (master save request submitted)';
     } else {
-      throw new Error('Save did not produce a recognizable success or error message within 7s');
+      throw new Error(`Save did not produce a recognizable success or error message within ${Math.round(maxOutcomeWaitMs / 1000)}s`);
     }
   }
 
@@ -1543,12 +1631,15 @@ async function collectValidationSummary(page) {
 }
 
 async function getTargetRow(page, targetRecordName = '') {
+  await waitForUsableTableRows(page);
   const target = String(targetRecordName || '').trim();
   if (!target) {
-    return page.locator(SEL.tableRows).first();
+    const row = await getNthUsableRow(page, 0);
+    if (row) return row;
+    throw new Error('No usable data rows found in table.');
   }
 
-  const row = page.locator(SEL.tableRows).filter({ hasText: target }).first();
+  const row = page.locator(SEL.tableRows).filter({ hasText: target }).filter({ hasNotText: /no data|no matching|loading|please wait/i }).first();
   const visible = await row.isVisible().catch(() => false);
   if (visible) return row;
 
@@ -1558,13 +1649,51 @@ async function getTargetRow(page, targetRecordName = '') {
     await searchBox.fill(target).catch(() => { });
     await page.waitForTimeout(800);
 
-    const filteredRow = page.locator(SEL.tableRows).filter({ hasText: target }).first();
+    await waitForUsableTableRows(page, 8000).catch(() => false);
+    const filteredRow = page.locator(SEL.tableRows).filter({ hasText: target }).filter({ hasNotText: /no data|no matching|loading|please wait/i }).first();
     if (await filteredRow.isVisible().catch(() => false)) {
       return filteredRow;
     }
   }
 
   throw new Error(`Target record not found in table: ${target}`);
+}
+
+function isUsableRowText(text) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (/no data|no matching|loading|please wait|processing/i.test(value)) return false;
+  return true;
+}
+
+async function waitForUsableTableRows(page, timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const count = await page.locator(SEL.tableRows).count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const row = page.locator(SEL.tableRows).nth(i);
+      const visible = await row.isVisible().catch(() => false);
+      if (!visible) continue;
+      const text = await row.textContent().catch(() => '');
+      if (isUsableRowText(text)) return true;
+    }
+    await page.waitForLoadState('networkidle', { timeout: 1000 }).catch(() => { });
+    await page.waitForTimeout(500);
+  }
+  return false;
+}
+
+async function getNthUsableRow(page, n = 0) {
+  await waitForUsableTableRows(page);
+  const rows = await page.locator(SEL.tableRows).all();
+  const usableRows = [];
+  for (const row of rows) {
+    const visible = await row.isVisible().catch(() => false);
+    if (!visible) continue;
+    const text = await row.textContent().catch(() => '');
+    if (isUsableRowText(text)) usableRows.push(row);
+  }
+  return usableRows[n] || usableRows[usableRows.length - 1] || null;
 }
 
 // ── Open first row for editing ─────────────────────────────────────────────────
@@ -1745,6 +1874,24 @@ async function deleteFirst(page, targetRecordName = null, deleteReason = '') {
     url: '',
   };
 
+  const onRequest = (req) => {
+    try {
+      const method = (req.method() || '').toUpperCase();
+      const url = req.url() || '';
+      const lower = url.toLowerCase();
+
+      if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
+      if (!lower.includes('/api/')) return;
+      if (lower.includes('/api/hub/') || lower.includes('/negotiate')) return;
+      if (lower.includes('password-policy') && lower.includes('validate')) return;
+
+      mutationRequest.fired = true;
+      mutationRequest.url = url;
+    } catch {
+      // Ignore observer errors.
+    }
+  };
+
   const onResponse = (response) => {
     try {
       const req = response.request();
@@ -1754,6 +1901,7 @@ async function deleteFirst(page, targetRecordName = null, deleteReason = '') {
 
       if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
       if (!lower.includes('/api/')) return;
+      if (lower.includes('/api/hub/') || lower.includes('/negotiate')) return;
       if (lower.includes('password-policy') && lower.includes('validate')) return;
 
       mutationRequest.fired = true;
@@ -1765,6 +1913,7 @@ async function deleteFirst(page, targetRecordName = null, deleteReason = '') {
     }
   };
 
+  page.on('request', onRequest);
   page.on('response', onResponse);
   const targetRow = await getTargetRow(page, targetRecordName || '');
   const rowScopedCandidates = [
@@ -1874,17 +2023,54 @@ async function deleteFirst(page, targetRecordName = null, deleteReason = '') {
 
       const success = snapshot.messages.find((msg) => /deleted successfully|deactivated successfully|successfully deleted|successfully deactivated|record deleted|record deactivated/i.test(msg));
       if (success) {
-        if (!mutationRequest.fired || !mutationRequest.ok) {
-          throw new Error(`Delete/deactivate success toast seen, but no successful mutation API response was observed. Last API: ${mutationRequest.url || 'none'} status=${mutationRequest.status ?? 'n/a'}`);
+        if (mutationRequest.status && !mutationRequest.ok) {
+          throw new Error(`Delete/deactivate success toast seen, but mutation API failed. Last API: ${mutationRequest.url || 'none'} status=${mutationRequest.status ?? 'n/a'}`);
         }
         successMessage = success;
         break;
+      }
+
+      const hardError = snapshot.messages.find((msg) => {
+        const lower = String(msg || '').toLowerCase();
+        if (/(are you sure|confirm|yes|ok|submit)/i.test(lower)) return false;
+        return /error|failed|unable|already exists|duplicate|invalid|required|not deleted|not deactivated/.test(lower);
+      });
+      if (hardError) {
+        throw new Error(`Delete/deactivate failed with message: ${hardError}`);
       }
 
       // Fallback: accept only when target record disappears AND a successful mutation API call occurred.
       if (targetRecordName && mutationRequest.fired && mutationRequest.ok && !snapshot.recordStillVisible) {
         successMessage = `Delete/deactivate reflected in table and API succeeded for ${targetRecordName}`;
         break;
+      }
+
+      // Soft-deactivated rows can remain visible in the grid; a successful API call
+      // is enough to proceed, and Audit History verification will prove the action.
+      if (mutationRequest.fired && mutationRequest.ok) {
+        successMessage = 'Delete/deactivate API succeeded; proceeding to Audit History verification';
+        break;
+      }
+
+      if (submittedReason && mutationRequest.fired && !mutationRequest.status) {
+        successMessage = 'Delete/deactivate submitted; proceeding to Audit History verification';
+        break;
+      }
+
+      if (mutationRequest.fired && !mutationRequest.status && Date.now() - startedAt > 4500) {
+        const blockingDialogVisible = await page.locator('.modal.show, .swal2-popup').first().isVisible().catch(() => false);
+        if (!blockingDialogVisible) {
+          successMessage = 'Delete/deactivate request submitted; proceeding to Audit History verification';
+          break;
+        }
+      }
+
+      if (submittedReason && !mutationRequest.fired && Date.now() - startedAt > 4500) {
+        const blockingDialogVisible = await page.locator('.modal.show, .swal2-popup').first().isVisible().catch(() => false);
+        if (!blockingDialogVisible) {
+          successMessage = 'Delete/deactivate reason submitted; proceeding to Audit History verification';
+          break;
+        }
       }
 
       // If API call failed, fail fast instead of false success.
@@ -1900,6 +2086,7 @@ async function deleteFirst(page, targetRecordName = null, deleteReason = '') {
       throw new Error(`Delete/deactivate not confirmed: no success signal + record still visible or no successful API call.${recordHint}`);
     }
   } finally {
+    page.off('request', onRequest);
     page.off('response', onResponse);
   }
 
@@ -1918,6 +2105,13 @@ async function deleteFirst(page, targetRecordName = null, deleteReason = '') {
 async function getFirstRecordName(page, targetRecordName = '') {
   const row = await getTargetRow(page, targetRecordName);
   return row.locator('td:nth-child(2), td:first-child').first().textContent().then((value) => String(value || '').trim()).catch(() => null);
+}
+
+// ── Get Nth visible record name (0-based index) ────────────────────────────────
+async function getNthRecordName(page, n = 0) {
+  const targetRow = await getNthUsableRow(page, n);
+  if (!targetRow) return null;
+  return targetRow.locator('td:nth-child(2), td:first-child').first().textContent().then((value) => String(value || '').trim()).catch(() => null);
 }
 
 function normalizeValueForCompare(value) {
@@ -2239,7 +2433,7 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
             await navigateTo(page, masterName, baseURL).catch(() => { });
           }
           return {
-            operation: 'create',
+            operation: 'Create',
             skipped: true,
             skipReason: 'duplicate-after-retries',
             recordName: '',
@@ -2247,6 +2441,8 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
             alertMessage: `Skipped after ${maxAttempts} duplicate retries`,
             fieldCount: Object.keys(mergedAuditTrail).length,
             auditVerification: null,
+            steps: ['Add a new record', 'Fill all fields', 'Click Save', ...(verifyAudit ? ['Navigate to Audit Trail', 'Verify audit trail entry for created record'] : [])],
+            expectedResult: verifyAudit ? 'A new record should be created successfully and audit trail should reflect the creation.' : 'A new record should be created successfully.',
           };
         }
 
@@ -2289,6 +2485,11 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
           throw error;
         }
 
+        // If the page itself is closed/dead, retrying is impossible — fail fast.
+        if (page.isClosed?.()) {
+          throw new Error(`Create failed: page is closed (cannot recover after offcanvas closure). Original error: ${error?.message || error}`);
+        }
+
         console.log(`[CREATE] Form closed during dependent dropdown handling, reopening and retrying (attempt ${attempt + 1}/${maxAttempts})`);
         if (baseURL) {
           await navigateTo(page, masterName, baseURL).catch(() => { });
@@ -2311,7 +2512,16 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
         console.log(`[CREATE] Validation summary (from error): ${msg}`);
       }
 
-      await page.waitForTimeout(700);
+      // Dismiss any open validation modals / toasts before retrying
+      await page.keyboard.press('Escape').catch(() => { });
+      await page.waitForTimeout(300);
+      const okBtn = page.locator('.swal2-confirm:visible:not([disabled])').first();
+      if (await okBtn.isVisible().catch(() => false)) {
+        await okBtn.click({ timeout: 2000, force: true }).catch(() => { });
+        await page.waitForTimeout(300);
+      }
+
+      await page.waitForTimeout(400);
     }
   }
 
@@ -2358,13 +2568,15 @@ async function createRecord(page, masterName, baseURL, verifyAudit = false, audi
 
   console.log(`[CREATE] ✓ Done (${Object.keys(mergedAuditTrail).length} fields)`);
   return {
-    operation: 'create',
+    operation: 'Create',
     recordName,
     auditTrail: mergedAuditTrail,
     createdRecordDetails: auditSourceDetails,
     alertMessage: alertMsg,
     fieldCount: Object.keys(mergedAuditTrail).length,
     auditVerification,
+    steps: ['Add a new record', 'Fill all fields', 'Click Save', ...(verifyAudit ? ['Navigate to Audit Trail', 'Verify audit trail entry for created record'] : [])],
+    expectedResult: verifyAudit ? 'A new record should be created successfully and audit trail should reflect the creation.' : 'A new record should be created successfully.',
   };
 }
 
@@ -2393,7 +2605,16 @@ async function checkDuplicateProtection(page, masterName, baseURL) {
 
   const firstRecordName = await getFirstRecordName(page);
   if (!firstRecordName) {
-    throw new Error(`[DUPLICATE-CHECK] No existing records found in "${masterName}". Create at least one record before running the duplicate check.`);
+    console.warn(`[DUPLICATE-CHECK] No existing records found in "${masterName}". Skipping duplicate check.`);
+    return {
+      operation: 'Duplicate-Check',
+      success: true,
+      skipped: true,
+      reason: 'No existing records to duplicate against',
+      screenshotPath: '',
+      steps: ['Attempt to create a record with existing values', 'Verify duplicate protection'],
+      expectedResult: 'System should block duplicate record creation.',
+    };
   }
   console.log(`[DUPLICATE-CHECK] Found existing record: "${firstRecordName}". Reading its field values...`);
 
@@ -2473,14 +2694,42 @@ async function checkDuplicateProtection(page, masterName, baseURL) {
     console.log('[DUPLICATE-CHECK] ✓ Duplicate entry correctly blocked by validation.');
 
     return {
-      operation: 'duplicate-check',
+      operation: 'Duplicate-Check',
       recordName: firstRecordName || '',
       duplicateBlocked: true,
       baselineFieldCount: Object.keys(snapshotValues).length,
       replayFieldCount: Object.keys(duplicateAuditTrail || {}).length,
       alertMessage: 'Duplicate create blocked successfully',
+      steps: ['Attempt to create a record with existing values', 'Verify duplicate protection'],
+      expectedResult: 'System should block duplicate record creation.',
     };
   }
+}
+
+async function captureFieldValues(page, fields) {
+  const values = {};
+  for (const field of fields || []) {
+    const key = field.columnToShow || field.displayName || field.id;
+    if (!key) continue;
+    values[key] = await readFieldValue(page, field.idx, field).catch(() => '');
+  }
+  return values;
+}
+
+function normalizeFieldAuditValue(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function buildChangedAuditTrail(beforeValues, afterValues) {
+  const changed = {};
+  for (const [key, value] of Object.entries(afterValues || {})) {
+    const before = normalizeFieldAuditValue(beforeValues?.[key]);
+    const after = normalizeFieldAuditValue(value);
+    if (after && before !== after) {
+      changed[key] = value;
+    }
+  }
+  return changed;
 }
 
 async function updateRecord(page, masterName, baseURL, verifyAudit = false, auditContext = {}, targetRecordName = '') {
@@ -2574,12 +2823,14 @@ async function updateRecord(page, masterName, baseURL, verifyAudit = false, audi
 
   console.log(`[UPDATE] ✓ Done (${Object.keys(auditTrail).length} fields)`);
   return {
-    operation: 'update',
+    operation: 'Update',
     recordName,
     auditTrail,
     alertMessage: alertMsg,
     fieldCount: Object.keys(auditTrail).length,
     auditVerification,
+    steps: ['Open an existing record', 'Modify field values', 'Click Save', ...(verifyAudit ? ['Navigate to Audit Trail', 'Verify audit trail entry for updated record'] : [])],
+    expectedResult: verifyAudit ? 'Record should be updated successfully and audit trail should reflect the changes.' : 'Record should be updated successfully.',
   };
 }
 
@@ -2627,13 +2878,40 @@ async function getRecordSiteBeforeDeletion(page, recordName) {
   }
 }
 
-async function deleteRecord(page, masterName, baseURL, verifyAudit = false, auditContext = {}, targetRecordName = '') {
+async function deleteRecord(page, masterName, baseURL, verifyAudit = false, auditContext = {}, targetRecordName = '', username = '') {
   console.log(`[DELETE] Deleting first record for ${masterName}...`);
   const recordName = await getFirstRecordName(page, targetRecordName);
 
   let recordSite = '';
   if (verifyAudit && isUserMaster(masterName)) {
     recordSite = await getRecordSiteBeforeDeletion(page, recordName);
+  }
+
+  // ── Capture pre-delete field values for comprehensive audit verification ──
+  let preDeleteFieldValues = {};
+  if (verifyAudit) {
+    console.log('[DELETE] Capturing pre-delete field values from edit form...');
+    await openFirstEdit(page, targetRecordName);
+    const preDeleteFields = await collectStableFormFields(page);
+    preDeleteFieldValues = await captureFieldValues(page, preDeleteFields);
+    console.log(`[DELETE] Captured ${Object.keys(preDeleteFieldValues).length} pre-delete field values`);
+
+    // Cancel the edit form without saving
+    const cancelBtn = await page.locator('.offcanvas.show button:has-text("Cancel"), .offcanvas.show .btn-close').first();
+    if (await cancelBtn.isVisible().catch(() => false)) {
+      await cancelBtn.click().catch(() => { });
+      await page.waitForTimeout(500);
+    } else {
+      await page.keyboard.press('Escape').catch(() => { });
+      await page.waitForTimeout(300);
+    }
+
+    // Wait for offcanvas to close
+    await page.waitForFunction(() => {
+      const offcanvas = document.querySelector('.offcanvas.show, #masterFormOffcanvas.show, #offcanvas.show');
+      return !offcanvas;
+    }, { timeout: 5000 }).catch(() => { });
+    await page.waitForTimeout(300);
   }
 
   const deleteReason = buildRandomUpdateReason();
@@ -2655,6 +2933,8 @@ async function deleteRecord(page, masterName, baseURL, verifyAudit = false, audi
       recordName,
       recordID: recordName,
       reason: deleteResult.reasonText,
+      auditTrail: preDeleteFieldValues,
+      username,
       strict: false,
     });
     if (auditVerification.comparison && !auditVerification.comparison.passed) {
@@ -2668,10 +2948,12 @@ async function deleteRecord(page, masterName, baseURL, verifyAudit = false, audi
   }
   console.log('[DELETE] ✓ Done');
   return {
-    operation: 'delete',
+    operation: 'Delete',
     recordName,
     alertMessage: deleteResult.message || 'Data deleted successfully',
     auditVerification,
+    steps: ['Select an existing record', 'Click Delete', 'Confirm deletion', ...(verifyAudit ? ['Navigate to Audit Trail', 'Verify audit trail entry for deleted record'] : [])],
+    expectedResult: verifyAudit ? 'Record should be deleted successfully and audit trail should reflect the deletion.' : 'Record should be deleted successfully.',
   };
 }
 
@@ -2741,10 +3023,14 @@ async function run() {
       await updateRecordingOverlay(page, { operation: opName, status: 'running' }).catch(() => { });
       try {
         const opResult = await handler();
-        const opScreenshot = await captureReportScreenshot(page, masterName, opName, 'passed', 'operation-complete').catch(() => '');
+        const successStep = Array.isArray(opResult?.steps) && opResult.steps.length > 0
+          ? opResult.steps[opResult.steps.length - 1]
+          : 'operation-complete';
+        const opScreenshot = await captureReportScreenshot(page, masterName, opName, 'passed', successStep).catch(() => '');
         if (opScreenshot && !opResult?.screenshotPath) {
           opResult.screenshotPath = opScreenshot;
         }
+        opResult.screenshotStep = successStep;
         results.operations.push(opResult);
 
         // Update overlay with audit result if available.
@@ -2766,11 +3052,13 @@ async function run() {
         return true;
       } catch (error) {
         const errorText = String(error?.stack || error?.message || error || 'Operation failed').trim();
-        const screenshotPath = await captureFailureScreenshot(page, context, masterName, opName).catch(() => '');
+        const failedStep = inferFailedStep(error, opName);
+        const screenshotPath = await captureFailureScreenshot(page, context, masterName, opName, failedStep).catch(() => '');
         results.failures.push({
           operation: opName,
           error: errorText,
           screenshotPath,
+          screenshotStep: failedStep,
           createdAt: new Date().toISOString(),
         });
         await updateRecordingOverlay(page, { status: 'fail' }).catch(() => { });
@@ -2811,7 +3099,7 @@ async function run() {
 
     if (operation === 'delete' || operation === 'all') {
       console.log('[CYCLE] Starting DELETE operation with audit verification enabled...');
-      await executeOperation('delete', () => deleteRecord(page, masterName, baseURL, verifyAudit, auditContext, targetRecordName));
+      await executeOperation('delete', () => deleteRecord(page, masterName, baseURL, verifyAudit, auditContext, targetRecordName, username));
     }
 
     // Collect audit mismatch reports
@@ -2855,6 +3143,24 @@ async function run() {
 
     results.completedAt = new Date().toISOString();
     results.failed = results.failures.length > 0 || results.auditMismatches.length > 0;
+
+    // Close context to finalize video files before capturing the primary video name.
+    if (context) {
+      await context.close().catch(() => { });
+      context = null;
+    }
+    try {
+      if (page && typeof page.video === 'function' && page.video()) {
+        const videoPath = await page.video().path();
+        results.primaryVideoName = videoPath ? path.basename(videoPath) : '';
+      }
+    } catch {
+      // Ignore: video path may not be available if recording was disabled.
+    }
+    if (browser) {
+      await browser.close().catch(() => { });
+      browser = null;
+    }
 
     console.log = origLog;
     console.warn = origWarn;

@@ -3,38 +3,47 @@
 One-line: End-to-end automation dashboard and orchestration for QuickFlow using Playwright, an Express orchestrator, and a React dashboard.
 
 ## Table of Contents
-- [Architecture Overview](#architecture-overview)
-- [Tech Stack](#tech-stack)
-- [Folder Structure](#folder-structure)
-- [Backend Documentation](#backend-documentation)
-- [Frontend Documentation](#frontend-documentation)
-- [Testing](#testing)
-- [Compliance & Security](#compliance--security)
-- [Helpers & Utilities](#helpers--utilities)
-- [Environment Variables & Configuration](#environment-variables--configuration)
-- [Development Setup](#development-setup)
-- [Deployment & CI/CD](#deployment--cicd)
-- [Contribution Guidelines](#contribution-guidelines)
-- [Changelog / Recent Changes](#changelog--recent-changes)
-- [Known TODOs & Issues](#known-todos--issues)
+- [TestHive — QuickFlow Automation Suite](#testhive--quickflow-automation-suite)
+  - [Table of Contents](#table-of-contents)
+  - [Architecture Overview](#architecture-overview)
+  - [Tech Stack](#tech-stack)
+  - [Folder Structure](#folder-structure)
+  - [Backend Documentation](#backend-documentation)
+    - [Main public endpoints](#main-public-endpoints)
+    - [Persistence / Data storage (MongoDB; legacy JSON in `backend/data/`)](#persistence--data-storage-mongodb-legacy-json-in-backenddata)
+    - [Error handling \& logging](#error-handling--logging)
+    - [Background jobs](#background-jobs)
+  - [Frontend Documentation](#frontend-documentation)
+  - [Testing](#testing)
+    - [Playwright E2E](#playwright-e2e)
+  - [Compliance \& Security](#compliance--security)
+  - [Helpers \& Utilities](#helpers--utilities)
+  - [Environment Variables \& Configuration](#environment-variables--configuration)
+  - [Development Setup](#development-setup)
+  - [Deployment \& CI/CD](#deployment--cicd)
+  - [Contribution Guidelines](#contribution-guidelines)
+  - [Changelog / Recent Changes](#changelog--recent-changes)
+  - [Known TODOs \& Issues](#known-todos--issues)
 
 ---
 
 ## Architecture Overview
 
-High-level architecture (frontend ↔ backend ↔ Playwright workers ↔ file storage):
+High-level architecture (frontend ↔ backend ↔ Playwright workers ↔ MongoDB + artifact storage):
 
 ```mermaid
 graph TD
   FE[Frontend (React + Vite)]
   BE[Backend (Express orchestrator)]
   PW[Playwright test scripts]
-  FS[File storage: backend/data + test-report-artifacts]
+  DB[(MongoDB Atlas)]
+  FS[Artifact storage: test-report-artifacts]
 
   FE -->|API calls| BE
   BE -->|spawn scripts (execFile)| PW
   PW -->|write artifacts| FS
-  BE -->|read/write JSON| FS
+  BE -->|read/write API state| DB
+  BE -->|index artifacts| FS
   FE -->|download artifacts via backend| FS
 ```
 
@@ -47,7 +56,7 @@ For a detailed diagram and reasoning see [Docs/ARCHITECTURE.md](Docs/ARCHITECTUR
 - Frontend: React 18 (react ^18.3.1), Vite (vite ^5.4.8)
 - Backend: Node.js + Express (express ^4.21.1), CORS (cors ^2.8.5)
 - Automation: Playwright (@playwright/test ^1.44.0) — single-project Chromium configuration
-- Storage: Local JSON files under `backend/data/` and artifact files in `playwright-tests/test-reports`
+- Storage: MongoDB Atlas collections for API state and artifact files in `playwright-tests/test-reports`
 
 Where package versions are listed in `frontend/package.json`, `backend/package.json`, and `playwright-tests/package.json`.
 
@@ -57,7 +66,7 @@ Where package versions are listed in `frontend/package.json`, `backend/package.j
 
 Top-level folders and purpose:
 
-- `backend/` — Express orchestrator, JSON-based persistence, artifact management, subprocess orchestration.
+  - `backend/` — Express orchestrator, MongoDB-backed persistence, artifact management, subprocess orchestration.
 - `frontend/` — React dashboard (Vite) used to trigger scripts and inspect results.
 - `playwright-tests/` — Playwright entry scripts, helpers, and per-test modules (the actual browser automation).
 - `Docs/` — human-written documentation (this repo contains both authored docs and the generated docs).
@@ -67,7 +76,7 @@ Example tree (abridged):
 ```
 backend/
   server.js                 # Express orchestrator
-  data/                     # JSON persistence (test-reports.json, recordings.json, masters.json, master-fields.json, ...)
+  data/                     # legacy JSON persistence (use `backend/scripts/migrate-json-to-mongo.js` to import into MongoDB)
 frontend/
   src/                      # React components and pages (TestReportPage.jsx, App.jsx, etc.)
 playwright-tests/
@@ -86,7 +95,7 @@ Docs/
 
 ## Backend Documentation
 
-The backend is implemented in `backend/server.js`. It orchestrates Playwright scripts, persists results to disk, and serves artifacts.
+The backend is implemented in `backend/server.js`. It orchestrates Playwright scripts, persists results to MongoDB (see `backend/db/storage.js`), and serves artifacts.
 
 ### Main public endpoints
 
@@ -99,22 +108,30 @@ The backend is implemented in `backend/server.js`. It orchestrates Playwright sc
 | POST | `/api/masters/:masterName/crud` | Run CRUD operations (create/update/delete/all/duplicate-check) | Body: `{ operation, loginUrl, username, password, verifyAuditTrail, prefilledValues }` |
 | POST | `/api/masters/:masterName/validate-mandatory` | Run mandatory-field validation script | Returns structured validation result and captures evidence |
 | POST | `/api/masters/compare-field` | Compare a dropdown field vs a target master table | Body: { sourceMaster, targetMaster, fieldId/fieldName } |
-| GET | `/api/test-reports` | Return persisted test report entries from `backend/data/test-reports.json` |
+| GET | `/api/test-reports` | Return persisted test report entries from MongoDB collection `test_reports` |
 | GET | `/api/recordings` | Return recordings index + snapshot of artifact files |
-| GET | `/api/dependency-config` | Get dependency config (`playwright-tests/helpers/dependent-dropdowns.json`) |
+| GET | `/api/dependency-config` | Get dependency config (stored in MongoDB collection `dependency_configs`; legacy file `playwright-tests/helpers/dependent-dropdowns.json` can be migrated) |
 | PUT | `/api/dependency-config/:masterName` | Save parent/dependent mapping for a master |
-| POST | `/api/save-results` | Save CRUD results snapshot as `backend/data/crud-results.json` |
+| POST | `/api/save-results` | Save CRUD results snapshot to MongoDB collection `crud_results` |
 
 Notes:
 - Authentication: none enforced; credentials for QuickFlow are passed via request payloads or environment variables. Be mindful when running in shared environments.
 - Rate limits: none implemented — the backend uses `execFile` and spawns Playwright scripts. You should avoid concurrent heavy runs unless you add queueing.
 
-### Persistence / Data files (location: `backend/data/`)
-- `test-reports.json` — array of saved test-report objects (id, masterName, operation, status, reason, logs, screenshotUrl, createdAt, etc.).
-- `recordings.json` — index of saved recordings metadata (id, name, url, title, kind, masterName, operation, createdAt, sizeBytes).
-- `masters.json` — cached masters list and embedded fields.
-- `master-fields.json` — map of masterName => { fetchedAt, fields: [...] } used for form discovery and smart-filling.
-- `crud-results.json` — frontend-saved run snapshots.
+### Persistence / Data storage
+
+Persistent API state is stored in MongoDB collections (managed by `backend/db/storage.js`). A migration script is provided to move legacy JSON files into MongoDB: `backend/scripts/migrate-json-to-mongo.js`.
+
+- `masters_cache` — cached masters list (singleton document).
+- `master_fields_cache` — per-master field metadata documents (`masterName`, `fetchedAt`, `fields`).
+- `test_reports` — saved test-report objects (id, masterName, operation, status, reason, logs, screenshotUrl, createdAt, etc.).
+- `recordings` — index of saved recordings metadata (id, name, url, title, kind, masterName, operation, createdAt, sizeBytes).
+- `compliance_runs` — persisted compliance run state and results.
+- `crud_results` — frontend-saved run snapshots (singleton `latest` document).
+- `dependency_configs` — parent/dependent dropdown mappings per master.
+- `template_workflow_states` — saved template-workflow `lastRun` and `lastPassed` states.
+
+Artifact files (screenshots, videos) continue to be stored on disk under `playwright-tests/test-reports` and are served by the backend at `/test-report-artifacts`.
 
 ### Error handling & logging
 

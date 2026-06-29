@@ -25,7 +25,7 @@ const {
   updateArtifactOverlay,
 } = require('./helpers/artifactOverlay');
 
-const DEPENDENCY_CONFIG_PATH = path.resolve(__dirname, 'helpers', 'dependent-dropdowns.json');
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 async function captureReportScreenshot(page, masterName, operation = 'compare-field', status = 'passed', step = 'complete') {
   if (!page || page.isClosed()) return '';
@@ -60,18 +60,33 @@ function normalizeLabel(text) {
     .trim();
 }
 
-function loadDependencyConfig() {
+let dependencyConfigCache = null;
+let dependencyConfigPromise = null;
+
+async function loadDependencyConfig() {
+  if (dependencyConfigCache) return dependencyConfigCache;
+  if (!dependencyConfigPromise) {
+    dependencyConfigPromise = (async () => {
+      const res = await fetch(`${BACKEND_URL}/api/dependency-config`);
+      if (!res.ok) {
+        throw new Error(`GET /api/dependency-config -> HTTP ${res.status}`);
+      }
+      const body = await res.json();
+      const config = body && typeof body.config === 'object' && body.config ? body.config : {};
+      dependencyConfigCache = config;
+      return config;
+    })();
+  }
   try {
-    const raw = fs.readFileSync(DEPENDENCY_CONFIG_PATH, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
+    return await dependencyConfigPromise;
+  } catch (error) {
+    dependencyConfigPromise = null;
+    throw error;
   }
 }
 
-function getMasterDependencyConfig(masterName) {
-  const config = loadDependencyConfig();
+async function getMasterDependencyConfig(masterName) {
+  const config = await loadDependencyConfig();
   const target = normalizeLabel(masterName);
   if (!target) return { parentDropdowns: [], dependentDropdowns: [] };
 
@@ -416,7 +431,7 @@ async function handleDependentDropdowns(page, fieldId, fieldIndex, sourceMaster,
     return;
   }
 
-  const dependencyCfg = getMasterDependencyConfig(sourceMaster);
+  const dependencyCfg = await getMasterDependencyConfig(sourceMaster);
   const isConfiguredDependent = isConfiguredDependentField(dependencyCfg, fieldName, fieldId);
 
   console.log(`[DEP] Field "${fieldName}" empty check: dependent=${isConfiguredDependent}, configured_parents=${dependencyCfg.parentDropdowns.length}`);

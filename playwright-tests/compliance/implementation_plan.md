@@ -34,7 +34,7 @@ We will heavily reuse `helpers/formDiscovery.js`, `helpers/smartFiller.js`, and 
   - The timestamp format is strictly verified (ISO 8601 or UTC).
   - Both `Old Value` and `New Value` exist and match our modifications.
 
-### 2. Legibility (Unicode & Long Strings) (TC-DI-02-01, 02-02)
+### 2. Legibility (Unicode & Long Strings) (TC-DI-02)
 - **Approach**: Instead of random data, we will pass explicit overrides to the form filler.
 - **Data**: Inject `"Ärzte & Société"` and a 255-character alphanumeric string.
 - **Verification**: After saving, we will navigate back to the Edit view and extract the input values to ensure they are byte-for-byte identical to the input (no truncation or garbling).

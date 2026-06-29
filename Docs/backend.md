@@ -3,126 +3,57 @@
 Overview
 --------
 
-The backend is a lightweight Express orchestrator implemented in `backend/server.js`. It spawns Playwright-based scripts, parses their machine-readable JSON output, indexes artifacts (screenshots, video), and persists run metadata into JSON files under `backend/data/`.
+The backend is a Node.js + Express orchestration service in [backend/server.js](backend/server.js). It receives requests from the frontend, executes Playwright automations, finalizes artifacts, and stores metadata in MongoDB through [backend/db/storage.js](backend/db/storage.js).
 
-Main responsibilities
+What the backend does
 ---------------------
 
-- Receive API requests from the frontend and validate payloads.
-- Spawn Playwright entry scripts via `child_process.execFile` and stream logs.
-- Parse `stdout` for structured JSON results and treat `stderr` as human-friendly logs.
-- Persist results to disk (JSON indexes) and maintain an artifacts index for recordings/screenshots.
+- Exposes REST endpoints used by the frontend.
+- Spawns Playwright entry scripts from [playwright-tests/](playwright-tests/) using child processes.
+- Parses script JSON output from stdout and keeps debug logs from stderr.
+- Tracks new recordings/screenshots and exposes artifact URLs via `/test-report-artifacts`.
+- Persists cached masters/fields, reports, recordings, compliance runs, and workflow states in MongoDB.
 
-Key API endpoints (examples)
-----------------------------
-
-- `GET /api/test-reports` — returns saved test report entries (from `backend/data/test-reports.json`).
-- `GET /api/recordings` — returns the recordings index and artifact snapshots.
-- `POST /api/masters/fetch` — run discovery script to enumerate masters (requires QuickFlow credentials via body or env).
-- `GET /api/masters/:masterName/fields` — get cached or live field discovery for a master (use `?refresh=true` to force a Playwright run).
-- `POST /api/masters/:masterName/crud` — run CRUD automation for a master. Body typically includes `operation`, `loginUrl`, `username`, `password`, and `verifyAuditTrail`.
-- `PUT /api/dependency-config/:masterName` — save parent/dependent dropdown mapping.
-
-Sample run (fetch masters)
-```
-curl -X POST http://localhost:8000/api/masters/fetch \
-  -H "Content-Type: application/json" \
-  -d '{"loginUrl":"https://app.example/login","username":"qa","password":"secret"}'
-```
-
-Persistence (data files)
-------------------------
-
-- `backend/data/test-reports.json` — array of test report objects (id, master, operation, status, logs, artifact links, timestamps).
-- `backend/data/recordings.json` — recording metadata (id, title, file path, master, operation, size, createdAt).
-- `backend/data/masters.json` and `backend/data/master-fields.json` — cached masters and detected field metadata.
-- `backend/data/crud-results.json` — saved snapshots of CRUD runs.
-
-Artifacts
----------
-
-Artifacts (screenshots, html, videos) are written by Playwright scripts and indexed by the backend. On Windows the server uses retry/rename strategies to avoid file lock races when moving artifact files; see `getVideoArtifactSnapshot()` and `tryRenameWithRetry()` in `server.js`.
-
-Running the backend locally
+Source files to read first
 --------------------------
+
+- [backend/server.js](backend/server.js) - routing, orchestration, artifact lifecycle.
+- [backend/db/storage.js](backend/db/storage.js) - MongoDB collection mapping and persistence operations.
+- [backend/db/mongoClient.js](backend/db/mongoClient.js) - Mongo client and required env settings.
+- [backend/scripts/migrate-json-to-mongo.js](backend/scripts/migrate-json-to-mongo.js) - migration from legacy JSON files.
+
+Endpoint documentation
+----------------------
+
+For a full endpoint-by-endpoint breakdown (request/response behavior + exact MongoDB reads/writes), see:
+
+- [Docs/api-mongodb-reference.md](Docs/api-mongodb-reference.md)
+
+Run locally
+-----------
 
 ```powershell
 cd backend
 npm install
-npm run dev   # or `node server.js` for production
+npm run dev
 ```
 
-Environment variables
----------------------
+Required and important env vars
+-------------------------------
 
-- `PORT` — port the server listens on (default shown in `server.js`).
-- `QT_URL`, `QT_USER`, `QT_PASS` — credentials used by Playwright entry scripts if not provided via API body.
+- `MONGODB_URI` (required)
+- `MONGODB_DB_NAME` (optional, default: `testhive`)
+- `MONGODB_APP_NAME` (optional)
+- `PORT` (optional, default: `8000`)
+- `QT_URL`, `QT_USER`, `QT_PASS` (used as defaults for automation calls)
 
-Operational notes
------------------
+Migration note
+--------------
 
-- No authentication is enabled by default — do not expose the server to public networks without adding an auth layer.
-- Playwright runs are synchronous from the server's perspective; consider adding a job queue (Redis/Bull) for heavy usage.
-- Be mindful of artifact retention; add periodic cleanup for disk usage control.
-# Backend Context & Architecture: TestHive
+If your environment still has old JSON data from earlier versions, run:
 
-## 1. System Role & Overview
-The `backend` is a Node.js Express application that serves as the orchestration layer between the TestHive Frontend (React UI) and the Playwright Automation Scripts. It does **not** use a traditional database (like PostgreSQL or MongoDB); instead, it relies on a local JSON file-based storage mechanism.
-
-**Core Responsibilities:**
-1. **API Gateway:** Expose REST endpoints consumed by the React frontend.
-2. **Process Management:** Spawn child processes using `child_process.execFile` to run Playwright scripts synchronously or asynchronously.
-3. **I/O Parsing:** Capture `stdout` (for JSON payloads) and `stderr` (for debugging/logs) from Playwright processes.
-4. **Artifact Management:** Track, move, and rename test artifacts like screenshots (`.png`) and video recordings (`.webm`) generated by Playwright.
-5. **State Persistence:** Maintain the history of test runs, artifact metadata, and dropdown dependencies in local JSON files.
-
----
-
-## 2. Environment & Configuration
-The backend requires certain environment variables (often passed down from the frontend payload and injected into `process.env` when spawning child processes):
-- `PORT`: Express server port (default `8000`).
-- `QT_URL`, `QT_USER`, `QT_PASS`: Default IPDEV target credentials.
-- `QT_HEADLESS`: Boolean string (`"true"`/`"false"`) controlling if Playwright runs visibly.
-
----
-
-## 3. Deep Dive: `server.js` (The Monolith)
-`server.js` is the single entry point and contains the entirety of the backend logic.
-
-### 3.1. Local Storage / Database Functions
-The backend uses `backend/data/` to store state.
-- `readTestReports()` / `writeTestReports(entries)` / `appendTestReport(entry)`: Manages `data/test-reports.json`. Keeps a capped array (e.g., max 500 entries) of historical runs.
-- `readRecordingsIndex()` / `writeRecordingsIndex(entries)`: Manages `data/recordings.json`. Indexes metadata for videos/screenshots to display in the UI.
-- `readDependencyConfig()` / `writeDependencyConfig(config)`: Manages `playwright-tests/helpers/dependent-dropdowns.json`, mapping parent/child dropdown dependencies (e.g., Country -> State).
-
-### 3.2. Artifact Capture Engine
-Since Playwright generates video files with random UUID names, the backend tracks artifact creation using a snapshot diffing technique.
-- `getVideoArtifactSnapshot()`: Reads the `test-reports` directory and returns a Map of all `.webm` and `.mp4` files with their sizes and modification times.
-- `beginRecordingCapture()`: Called *before* spawning a Playwright process. Returns the current `getVideoArtifactSnapshot()`.
-- `finalizeRecordingCapture(capture, meta)`: Called *after* the Playwright process finishes. Diff's the new snapshot against the `capture` snapshot to identify newly created video files. It then renames these files using a human-readable slug (e.g., `2026-05-04-crud-users-all.webm`) and saves the metadata to `recordings.json`.
-
-### 3.3. Subprocess Execution Wrappers
-These functions wrap `child_process.execFile`. They execute files located in `../playwright-tests/`.
-- `runFetchMastersScript(env)`: Executes `fetch-masters.js`. Returns a JSON object with discovered master URLs.
-- `runFetchMasterFieldsScript(env)`: Executes `fetch-master-fields.js`. Returns an array of field objects (id, label, type) for a specific form.
-- `runCompareFieldScript(env)`: Executes `compare-field-master.js`. Returns comparison stats between a dropdown and master table.
-- `runCrudMasterScript(env)`: Executes `crud-master.js`. This is the heaviest script. It has a timeout of 7 minutes (`420000ms`). Returns a deeply nested JSON object detailing the pass/fail state of create, update, delete, duplicate-check, and audit verifications.
-- `runMandatoryFieldsScript(env)`: Executes `validate-mandatory-fields.js`. Returns JSON describing required fields found.
-
-### 3.4. REST API Endpoints
-- **`GET /health`**: Health check.
-- **`GET /api/masters`**: Returns the cached list of masters to avoid re-fetching.
-- **`POST /api/masters/fetch`**: Invokes `runFetchMastersScript`. Updates the internal RAM cache (`mastersCache`) and returns the list.
-- **`GET /api/masters/:masterName/fields`**: Invokes `runFetchMasterFieldsScript`. Caches the results in a `Map`. Also auto-saves any detected dropdown dependencies into `dependent-dropdowns.json`.
-- **`POST /api/masters/:masterName/crud`**: 
-  - **Payload**: `{ operation: "create|update|delete|all|duplicate-check", loginUrl, username, password, verifyAuditTrail, prefilledValues }`
-  - **Logic**: Invokes `runCrudMasterScript`. Parses the complex result, triggers `finalizeRecordingCapture`, and pushes a detailed status report object via `appendTestReport`.
-- **`POST /api/masters/:masterName/validate-mandatory`**: Invokes `runMandatoryFieldsScript` and appends results to test reports.
-- **`POST /api/masters/compare-field`**: Invokes `runCompareFieldScript`.
-- **`GET /api/recordings` & `GET /api/test-reports`**: Retrieve data from the JSON files.
-- **`POST /api/save-results` & `GET /api/saved-results`**: Syncs the frontend's transient CRUD execution state to `data/crud-results.json` so users don't lose results on page refresh.
-- **`GET /api/dependency-config` & `PUT /api/dependency-config/:masterName`**: CRUD operations for the `dependent-dropdowns.json` configuration.
-
-## 4. LLM Contextual Gotchas
-- **Stdout Protocol**: The backend strictly expects the Playwright scripts to `console.log` standard messages to `stderr`, and strictly print the final JSON result to `stdout`. The backend parses `stdout` via `JSON.parse()`. If Playwright throws unhandled non-JSON text into `stdout`, the backend will crash with a JSON parsing error.
-- **Paths**: The backend relies heavily on relative paths using `path.resolve(__dirname, '..', 'playwright-tests')`. Moving the backend folder without adjusting these will break execution.
+```powershell
+cd backend
+npm run migrate:json-to-mongo:dry
+npm run migrate:json-to-mongo
+```

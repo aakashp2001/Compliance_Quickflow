@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getTestReports, getRecordings } from './api/client';
+import { API_BASE_URL, getTestReports, getRecordings } from './api/client';
 
 function cleanErrorPrefix(value) {
   return String(value || '')
@@ -73,6 +73,105 @@ function emptyText(report, label = 'Not available') {
   return isTemplateWorkflowReport(report) ? label : '-';
 }
 
+function isComplianceReport(report) {
+  const operation = String(report?.operation || '').toLowerCase().trim();
+  return operation.startsWith('compliance-');
+}
+
+function stringifyComplianceStepValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function extractComplianceDetailReason(detail) {
+  const explicit = stringifyComplianceStepValue(detail?.reason || detail?.error || detail?.message);
+  if (explicit) return explicit;
+
+  const failedFields = [
+    ...(Array.isArray(detail?.failedFields) ? detail.failedFields : []),
+    ...(Array.isArray(detail?.fieldValidationSummary?.failedFields) ? detail.fieldValidationSummary.failedFields : []),
+    ...(Array.isArray(detail?.updateOldNewValidation?.failedFields) ? detail.updateOldNewValidation.failedFields : []),
+  ].map((item) => String(item || '').trim()).filter(Boolean);
+
+  if (failedFields.length > 0) {
+    return `Failed fields: ${Array.from(new Set(failedFields)).join(', ')}`;
+  }
+
+  const expected = stringifyComplianceStepValue(detail?.expected);
+  const actual = stringifyComplianceStepValue(detail?.actual);
+  if (expected && actual && expected !== actual) {
+    return `Expected ${expected}, actual ${actual}`;
+  }
+  if (actual && detail?.passed === false) {
+    return `Actual: ${actual}`;
+  }
+
+  return '';
+}
+
+function getComplianceStepResults(report) {
+  const rawDetails = Array.isArray(report?.complianceDetails) ? report.complianceDetails : [];
+  const source = rawDetails.length > 0
+    ? rawDetails.map((detail, index) => {
+      const expected = stringifyComplianceStepValue(detail?.expected);
+      const actual = stringifyComplianceStepValue(detail?.actual);
+      const reason = extractComplianceDetailReason(detail);
+      const infoParts = [];
+      if (expected) infoParts.push(`Expected: ${expected}`);
+      if (actual) infoParts.push(`Actual: ${actual}`);
+      if (reason) infoParts.push(`Reason: ${reason}`);
+      return {
+        step: stringifyComplianceStepValue(detail?.step || detail?.name || `Step ${index + 1}`),
+        passed: detail?.passed === true,
+        result: detail?.passed === true ? 'PASSED' : 'FAILED',
+        info: infoParts.join(' | '),
+        reason,
+      };
+    })
+    : (Array.isArray(report?.complianceStepResults) ? report.complianceStepResults : []);
+
+  return source.map((row, index) => {
+    const step = String(row?.step || `Step ${index + 1}`).trim();
+    const passed = row?.passed === true || String(row?.result || '').toUpperCase() === 'PASSED';
+    const result = passed ? 'PASSED' : 'FAILED';
+    const expected = stringifyComplianceStepValue(row?.expected);
+    const actual = stringifyComplianceStepValue(row?.actual);
+    const reason = stringifyComplianceStepValue(row?.reason);
+
+    let info = String(row?.info || '').trim();
+    if (!info) {
+      const infoParts = [];
+      if (expected) infoParts.push(`Expected: ${expected}`);
+      if (actual) infoParts.push(`Actual: ${actual}`);
+      if (reason) infoParts.push(`Reason: ${reason}`);
+      info = infoParts.join(' | ');
+    }
+
+    return {
+      step,
+      passed,
+      result,
+      info,
+      reason,
+    };
+  }).filter((row) => row.step);
+}
+
+function getComplianceFailedReasonLines(report) {
+  return getComplianceStepResults(report)
+    .filter((row) => !row.passed)
+    .map((row) => {
+      const detail = String(row.reason || row.info || 'Step failed').trim();
+      return `${row.step}: ${detail}`;
+    });
+}
+
 function extractReasonFromTextBlock(sourceText) {
   const text = String(sourceText || '').trim();
   if (!text) return '';
@@ -102,6 +201,26 @@ function extractReasonFromTextBlock(sourceText) {
 }
 
 function getDisplayReason(report) {
+  const complianceSteps = getComplianceStepResults(report);
+  if (complianceSteps.length > 0) {
+    const normalizedStatus = String(report?.status || '').toLowerCase();
+    if (normalizedStatus === 'passed') {
+      const passedCount = complianceSteps.filter((row) => row.passed).length;
+      return `${passedCount}/${complianceSteps.length} compliance steps passed.`;
+    }
+    if (normalizedStatus === 'blocked') {
+      return 'Compliance test is blocked. See step details for blocker.';
+    }
+    if (normalizedStatus === 'not-performed') {
+      return 'Compliance test was not performed because the run was stopped.';
+    }
+
+    const failedReasonLines = getComplianceFailedReasonLines(report);
+    if (failedReasonLines.length > 0) {
+      return failedReasonLines.join('\n');
+    }
+  }
+
   const directReason = cleanErrorPrefix(report?.reason || '');
   if (directReason && !isLogLikeReason(directReason)) return simplifyReason(directReason, report);
 
@@ -131,6 +250,13 @@ function getLogBullets(report) {
     ].filter(Boolean);
   }
 
+  if (isComplianceReport(report)) {
+    const rows = getComplianceStepResults(report);
+    if (rows.length > 0) {
+      return rows.map((row) => `${row.result}: ${row.step}${row.info ? ` - ${row.info}` : ''}`);
+    }
+  }
+
   const source = String(report?.logs || report?.error || '').trim();
   if (!source) return [];
 
@@ -153,8 +279,12 @@ function formatOperation(value) {
     .join(' ');
 }
 
+function getCleanOperation(report) {
+  return String(report?.operation || '').replace(/\s*\+\s*Audit Trail Verification$/i, '');
+}
+
 function getExpectedResult(report) {
-  const op = String(report?.operation || '').toLowerCase().trim();
+  const op = String(getCleanOperation(report)).toLowerCase().trim();
   const masterLabel = report?.masterName ? report.masterName : 'selected master';
   const auditRows = getAuditComparisonRows(report);
   const auditSummary = getAuditComparisonSummary(auditRows);
@@ -232,8 +362,13 @@ function getTestCaseBullets(report, expectedResult) {
     bullets.push(`1. Open Audit Trail for ${masterLabel}`);
     bullets.push('2. Match record details with executed operation');
     bullets.push('3. Verify audit evidence is present');
+  } else if (op === 'all') {
+    bullets.push('1. Create a new record');
+    bullets.push('2. Update an existing record');
+    bullets.push('3. Delete a record');
+    bullets.push('4. Check duplicate protection');
   } else {
-    bullets.push(`Test: ${formatOperation(report?.operation).toLowerCase()}`);
+    bullets.push(`Test: ${formatOperation(getCleanOperation(report)).toLowerCase()}`);
   }
 
   if (expectedResult && expectedResult !== '-') {
@@ -270,9 +405,9 @@ function getTestScenario(report) {
     return `Validate field consistency between source form options and target master records for ${masterLabel}.`;
   }
   if (op === 'audit-verified' || op === 'audit-check') {
-    return `Validate audit trail evidence for executed ${formatOperation(report?.verifiedOperation || report?.operation).toLowerCase()} operation in ${masterLabel}.`;
+    return `Validate audit trail evidence for executed ${formatOperation(report?.verifiedOperation || getCleanOperation(report)).toLowerCase()} operation in ${masterLabel}.`;
   }
-  return `Validate ${formatOperation(report?.operation).toLowerCase()} flow for ${masterLabel}.`;
+  return `Validate ${formatOperation(getCleanOperation(report)).toLowerCase()} flow for ${masterLabel}.`;
 }
 
 function getAuditComparisonRows(report) {
@@ -305,13 +440,13 @@ function isAuditTrailReport(report) {
 }
 
 function getReportOperationLabel(report) {
-  const masterName = String(report?.masterName || '').trim();
-  const prefix = masterName || 'Master';
   const operation = String(report?.operation || '').toLowerCase();
 
-  if (isAuditTrailReport(report)) return `${prefix}-Audit Check`;
-  if (operation === 'mandatory-check' || operation === 'mandatory-fields') return `${prefix}-Mandatory Check`;
-  return formatOperation(report?.operation);
+  if (isAuditTrailReport(report)) return 'Audit Check';
+  if (operation === 'mandatory-check' || operation === 'mandatory-fields') return 'Mandatory Check';
+  // Strip legacy "+ Audit Trail Verification" suffix from old reports
+  const cleanOp = String(report?.operation || '').replace(/\s*\+\s*Audit Trail Verification$/i, '');
+  return formatOperation(cleanOp);
 }
 
 function getAuditComparisonSummary(rows) {
@@ -322,11 +457,62 @@ function getAuditComparisonSummary(rows) {
   return { total: rows.length, passed, failed, failedFields };
 }
 
+function getArtifactBaseUrl() {
+  const configured = String(API_BASE_URL || '').replace(/\/+$/, '');
+  if (configured) return configured;
+  if (import.meta?.env?.DEV) return 'http://127.0.0.1:8000';
+  // When no API base is configured, prefer an explicit backend host on the
+  // local machine (port 8000). This prevents the browser resolving
+  // "/test-report-artifacts/..." to the frontend origin (e.g. localhost:5173).
+  if (typeof window !== 'undefined' && window.location) {
+    const hostname = window.location.hostname || '127.0.0.1';
+    const protocol = window.location.protocol || 'http:';
+    return `${protocol}//${hostname}:8000`.replace(/\/+$/, '');
+  }
+  return '';
+}
+
+function normalizeArtifactUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const base = getArtifactBaseUrl();
+  if (raw.startsWith('/')) return base ? `${base}${raw}` : raw;
+  return base ? `${base}/test-report-artifacts/${encodeURIComponent(raw)}` : `/test-report-artifacts/${encodeURIComponent(raw)}`;
+}
+
+function getReportScreenshotUrl(report) {
+  return normalizeArtifactUrl(report?.screenshotUrl || report?.screenshotFile || '');
+}
+
+function normalizeComplianceOperation(value) {
+  const raw = String(value || '').trim().toLowerCase().replace(/\s+/g, '-');
+  return raw.replace(/^compliance-/, '');
+}
+
+function getDirectReportRecording(report) {
+  const directUrl = normalizeArtifactUrl(report?.recordingUrl || report?.recordingFile || '');
+  if (!directUrl) return null;
+  return {
+    id: report?.recordingId || report?.recordingFile || directUrl,
+    name: report?.recordingFile || '',
+    url: directUrl,
+    kind: 'compliance',
+    masterName: report?.masterName || '',
+    operation: normalizeComplianceOperation(report?.operation || ''),
+    createdAt: report?.createdAt || '',
+  };
+}
+
 function findMatchingRecording(report, recordings) {
+  const direct = getDirectReportRecording(report);
+  if (direct) return direct;
+
   if (!recordings || recordings.length === 0) return null;
   const normalize = (value) => String(value || '').trim().toLowerCase();
   const masterLower = normalize(report.masterName);
   const opLower = normalize(report.operation);
+  const complianceOpLower = normalizeComplianceOperation(report.operation);
   const verifiedOpLower = normalize(report.verifiedOperation);
   const sourceMasterLower = normalize(report.sourceMaster || report.masterName);
   const targetMasterLower = normalize(report.targetMaster);
@@ -342,6 +528,16 @@ function findMatchingRecording(report, recordings) {
     const recField = normalize(rec.fieldName);
 
     if (recMaster === masterLower && recOp === opLower) return true;
+
+    if (isComplianceReport(report)) {
+      const recFile = normalize(rec.name);
+      const reportFile = normalize(report.recordingFile);
+      if (reportFile && recFile === reportFile) return true;
+
+      return recKind === 'compliance'
+        && recMaster === masterLower
+        && normalizeComplianceOperation(recOp) === complianceOpLower;
+    }
 
     if (opLower === 'mandatory-check') {
       return recKind === 'mandatory' && recMaster === masterLower;
@@ -407,6 +603,7 @@ function downloadReport(report, matchedRec) {
   const auditComparisonSummary = getAuditComparisonSummary(auditComparisonRows);
   const logs = String(report.logs || report.error || '').trim();
   const logLines = logs.split(/\r?\n/).filter(Boolean);
+  const screenshotUrl = getReportScreenshotUrl(report);
   const escapeHtml = (value) => String(value || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -448,7 +645,7 @@ function downloadReport(report, matchedRec) {
   const rawJson = JSON.stringify(normalizeForRawJson(report), null, 2);
   const discoveredLinks = [
     ...extractUrls(report),
-    report.screenshotUrl,
+    screenshotUrl,
     matchedRec?.url,
   ].filter(Boolean);
   const classifyLinkLabel = (url, idx) => {
@@ -680,7 +877,7 @@ function downloadReport(report, matchedRec) {
     <table>
       ${row('Expected Result', expectedResult)}
       ${row('Reason', reason)}
-      ${row('Screenshot', report.screenshotUrl ? `<a href="${report.screenshotUrl}" target="_blank">${report.screenshotUrl}</a>` : emptyText(report, 'No screenshot saved'))}
+      ${row('Screenshot', screenshotUrl ? `<a href="${screenshotUrl}" target="_blank">${screenshotUrl}</a>` : emptyText(report, 'No screenshot saved'))}
       ${row('Recording', matchedRec ? `<a href="${matchedRec.url}" target="_blank">${matchedRec.url}</a>` : emptyText(report, 'No recording found'))}
     </table>
   </div>
@@ -812,12 +1009,25 @@ function downloadAllReports(reports, recordings) {
       </div>`;
   };
 
+  const buildTestStepsHtml = (report) => {
+    const bullets = getTestCaseBullets(report);
+    if (!bullets.length) return '-';
+    return `<ol style="margin:0;padding-left:16px;font-size:12px;">
+      ${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
+    </ol>`;
+  };
+
   const rows = (Array.isArray(reports) ? reports : []).map((report) => {
     const matchedRec = findMatchingRecording(report, recordings);
+    const screenshotUrl = getReportScreenshotUrl(report);
     const reason = getDisplayReason(report);
     const expectedResult = getExpectedResult(report);
     const statusLabel = report.status === 'passed' ? 'PASS' : report.status === 'audit-mismatch' ? 'AUDIT' : 'FAIL';
     const auditSummaryHtml = buildAuditSummaryHtml(report);
+    const testStepsHtml = buildTestStepsHtml(report);
+    const logs = Array.isArray(report.logs) && report.logs.length
+      ? report.logs.map((l) => escapeHtml(String(l))).join('<br>')
+      : (report.reason ? escapeHtml(String(report.reason)) : '-');
 
     return `
       <tr>
@@ -826,9 +1036,11 @@ function downloadAllReports(reports, recordings) {
         <td>${escapeHtml(getReportOperationLabel(report))}</td>
         <td>${escapeHtml(statusLabel)}</td>
         <td>${escapeHtml(expectedResult)}</td>
+        <td>${testStepsHtml}</td>
         <td>${escapeHtml(reason)}</td>
         <td>${auditSummaryHtml}</td>
-        <td>${report.screenshotUrl ? `<a href="${report.screenshotUrl}" target="_blank" rel="noreferrer">Screenshot</a>` : '-'}</td>
+        <td>${logs}</td>
+        <td>${screenshotUrl ? `<a href="${screenshotUrl}" target="_blank" rel="noreferrer">Screenshot</a>${report.screenshotStep ? `<br><small style="color:#64748b">Step: ${escapeHtml(report.screenshotStep)}</small>` : ''}` : '-'}</td>
         <td>${matchedRec?.url ? `<a href="${matchedRec.url}" target="_blank" rel="noreferrer">Recording</a>` : '-'}</td>
       </tr>`;
   }).join('');
@@ -846,17 +1058,35 @@ function downloadAllReports(reports, recordings) {
     .muted { color: #5d708f; margin-bottom: 20px; }
     .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
     .stat { padding: 8px 12px; border-radius: 999px; font-weight: 700; background: #eef4ff; color: #204a87; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { border: 1px solid #d7e0ee; padding: 10px; text-align: left; vertical-align: top; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+    th, td { border: 1px solid #d7e0ee; padding: 8px; text-align: left; vertical-align: top; word-wrap: break-word; }
     th { background: #f7faff; }
-    .audit-summary { min-width: 320px; }
+    .audit-summary { min-width: 280px; }
+    /* Column widths for main report table */
+    .col-time { width: 12%; }
+    .col-master { width: 9%; }
+    .col-operation { width: 9%; }
+    .col-status { width: 6%; }
+    .col-expected { width: 12%; }
+    .col-teststeps { width: 14%; }
+    .col-reason { width: 10%; }
+    .col-audit { width: 14%; }
+    .col-logs { width: 8%; }
+    .col-screenshot { width: 6%; }
+    .col-recording { width: 5%; }
     .audit-failed { margin: 6px 0; color: #8a1f1f; }
-    .audit-table { margin-top: 8px; font-size: 12px; }
-    .audit-table th, .audit-table td { padding: 6px; }
+    .audit-table { margin-top: 8px; font-size: 12px; width: 100%; table-layout: fixed; }
+    .audit-table th, .audit-table td { padding: 5px 6px; word-wrap: break-word; }
+    .audit-table th { background: #eef4ff; }
+    .audit-table th:nth-child(1) { width: 28%; }
+    .audit-table th:nth-child(2) { width: 28%; }
+    .audit-table th:nth-child(3) { width: 28%; }
+    .audit-table th:nth-child(4) { width: 16%; }
     .audit-pass { background: #f0fff4; }
     .audit-fail { background: #fff5f5; }
-    a { color: #0b63d9; text-decoration: none; }
+    a { color: #0b63d9; text-decoration: none; white-space: nowrap; }
     a:hover { text-decoration: underline; }
+    td small { color: #64748b; font-size: 11px; white-space: nowrap; text-wrap: auto; }
   </style>
 </head>
 <body>
@@ -872,18 +1102,20 @@ function downloadAllReports(reports, recordings) {
     <table>
       <thead>
         <tr>
-          <th>Time</th>
-          <th>Master</th>
-          <th>Operation</th>
-          <th>Status</th>
-          <th>Expected Result</th>
-          <th>Reason</th>
-          <th>Audit Summary</th>
-          <th>Screenshot</th>
-          <th>Recording</th>
+          <th class="col-time">Time</th>
+          <th class="col-master">Master</th>
+          <th class="col-operation">Operation</th>
+          <th class="col-status">Status</th>
+          <th class="col-expected">Expected Result</th>
+          <th class="col-teststeps">Test Steps</th>
+          <th class="col-reason">Reason</th>
+          <th class="col-audit">Audit Summary</th>
+          <th class="col-logs">Logs</th>
+          <th class="col-screenshot">Screenshot</th>
+          <th class="col-recording">Recording</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="9">No reports available</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="11">No reports available</td></tr>'}</tbody>
     </table>
   </div>
 </body>
@@ -915,8 +1147,6 @@ function TestReportPage({ masters = [] }) {
   // Search state
   const [masterSearchText, setMasterSearchText] = useState('');
   const [operationSearchText, setOperationSearchText] = useState('');
-  const [appliedMasterSearch, setAppliedMasterSearch] = useState('');
-  const [appliedOperationSearch, setAppliedOperationSearch] = useState('');
 
   async function loadReports() {
     setLoading(true);
@@ -930,6 +1160,12 @@ function TestReportPage({ masters = [] }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function refreshReports() {
+    resetColumnSearch();
+    await loadReports();
+    await loadRecordings();
   }
 
   async function loadRecordings() {
@@ -960,8 +1196,8 @@ function TestReportPage({ masters = [] }) {
     if (statusFilter === 'failed' && report.status !== 'failed') return false;
     if (statusFilter === 'audit-mismatch' && report.status !== 'audit-mismatch') return false;
 
-    const masterNeedle = appliedMasterSearch.trim().toLowerCase();
-    const operationNeedle = appliedOperationSearch.trim().toLowerCase();
+    const masterNeedle = masterSearchText.trim().toLowerCase();
+    const operationNeedle = operationSearchText.trim().toLowerCase();
     const masterText = String(report.masterName || '').toLowerCase();
     const operationText = `${report.operation || ''} ${formatOperation(report.operation)}`.toLowerCase();
 
@@ -987,7 +1223,7 @@ function TestReportPage({ masters = [] }) {
   const passedCount = reports.filter((r) => r.status === 'passed').length;
   const failedCount = reports.filter((r) => r.status === 'failed').length;
   const auditMismatchCount = reports.filter((r) => r.status === 'audit-mismatch').length;
-  const hasColumnSearch = Boolean(appliedMasterSearch || appliedOperationSearch);
+  const hasColumnSearch = Boolean(masterSearchText.trim() || operationSearchText.trim());
   const masterSuggestions = Array.from(new Set([
     ...masters.map((master) => typeof master === 'string' ? master : master?.name || master?.label || master?.masterName || ''),
     ...reports.map((report) => report.masterName || ''),
@@ -996,16 +1232,9 @@ function TestReportPage({ masters = [] }) {
     .map((report) => formatOperation(report.operation))
     .filter((value) => value && value !== 'Not available'))).sort((a, b) => a.localeCompare(b));
 
-  function applyColumnSearch(kind) {
-    if (kind === 'master') setAppliedMasterSearch(masterSearchText.trim());
-    if (kind === 'operation') setAppliedOperationSearch(operationSearchText.trim());
-  }
-
   function resetColumnSearch() {
     setMasterSearchText('');
     setOperationSearchText('');
-    setAppliedMasterSearch('');
-    setAppliedOperationSearch('');
   }
 
   // Recordings pagination
@@ -1043,7 +1272,7 @@ function TestReportPage({ masters = [] }) {
                 Download All Reports
               </button>
             )}
-            <button type="button" className="btn-sm" onClick={loadReports} disabled={loading}>
+            <button type="button" className="btn-sm" onClick={refreshReports} disabled={loading}>
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
@@ -1092,13 +1321,11 @@ function TestReportPage({ masters = [] }) {
                     value={masterSearchText}
                     onChange={(event) => setMasterSearchText(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') applyColumnSearch('master');
+                      if (event.key === 'Enter') event.currentTarget.blur();
                     }}
                     placeholder="Search master"
                   />
-                  <button type="button" className="btn-sm" onClick={() => applyColumnSearch('master')}>
-                    Search
-                  </button>
+
                 </div>
                 <datalist id="test-report-master-options">
                   {masterSuggestions.map((masterName) => (
@@ -1116,13 +1343,11 @@ function TestReportPage({ masters = [] }) {
                     value={operationSearchText}
                     onChange={(event) => setOperationSearchText(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') applyColumnSearch('operation');
+                      if (event.key === 'Enter') event.currentTarget.blur();
                     }}
                     placeholder="Search operation"
                   />
-                  <button type="button" className="btn-sm" onClick={() => applyColumnSearch('operation')}>
-                    Search
-                  </button>
+
                 </div>
                 <datalist id="test-report-operation-options">
                   {operationSuggestions.map((operationName) => (
@@ -1143,11 +1368,17 @@ function TestReportPage({ masters = [] }) {
         {error && <p className="status-error">{error}</p>}
 
         {!loading && reports.length === 0 && !error && (
-          <p className="muted">No test reports found yet.</p>
+          <div className="empty-state-box">
+            <strong>No test reports found yet</strong>
+            Run a test and refresh to see results here.
+          </div>
         )}
 
         {!loading && reports.length > 0 && filteredReports.length === 0 && (
-          <p className="muted">No reports match the selected search.</p>
+          <div className="empty-state-box">
+            <strong>No matching reports</strong>
+            Try adjusting your filters or search criteria.
+          </div>
         )}
 
         {!!filteredReports.length && (
@@ -1160,11 +1391,11 @@ function TestReportPage({ masters = [] }) {
                     <th className="test-report-col-time">Time</th>
                     <th className="test-report-col-master">Master</th>
                     <th className="test-report-col-operation">Operation</th>
-                    <th className="test-report-teststeps -col">Test Steps</th>
+                    <th className="test-report-teststeps-col">Test Steps</th>
                     <th className="test-report-reason-col">Reason</th>
                     <th className="test-report-logs-col">Logs</th>
                     <th className="test-report-col-url">Screenshot</th>
-                    <th className="test-report-col-url">Recording URL</th>
+                    <th className="test-report-col-recording">Recording</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Download</th>
                   </tr>
                 </thead>
@@ -1172,24 +1403,29 @@ function TestReportPage({ masters = [] }) {
                   {paginatedReports.map((report) => {
                     const reasonText = getDisplayReason(report);
                     const expectedResult = getExpectedResult(report);
+                    const complianceStepRows = getComplianceStepResults(report);
+                    const complianceFailedReasonLines = getComplianceFailedReasonLines(report);
+                    const compliancePassedCount = complianceStepRows.filter((row) => row.passed).length;
                     const logBullets = getLogBullets(report);
                     const testCaseBullets = getTestCaseBullets(report, expectedResult);
                     const auditComparisonRows = getAuditComparisonRows(report);
                     const auditComparisonSummary = getAuditComparisonSummary(auditComparisonRows);
                     const matchedRec = findMatchingRecording(report, recordings);
-                    const statusBadgeStyle = report.status === 'passed'
-                      ? { backgroundColor: '#22c55e', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500' }
+                    const screenshotUrl = getReportScreenshotUrl(report);
+                    const statusClass = report.status === 'passed'
+                      ? 'report-status-pill--passed'
                       : report.status === 'audit-mismatch'
-                        ? { backgroundColor: '#f59e0b', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500' }
-                        : { backgroundColor: '#ef4444', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500' };
+                        ? 'report-status-pill--audit'
+                        : 'report-status-pill--failed';
                     const statusText = report.status === 'passed' ? '✓ Pass' : report.status === 'audit-mismatch' ? '⚠ Audit' : '✗ Fail';
+                    const rowClass = report.status === 'passed' ? 'row-pass' : report.status === 'audit-mismatch' ? 'row-audit' : 'row-fail';
                     return (
-                      <tr key={report.id}>
-                        <td><span style={statusBadgeStyle}>{statusText}</span></td>
+                      <tr key={report.id} className={rowClass}>
+                        <td><span className={`report-status-pill ${statusClass}`}>{statusText}</span></td>
                         <td>{report.createdAt ? new Date(report.createdAt).toLocaleString() : emptyText(report)}</td>
                         <td>{report.masterName || emptyText(report)}</td>
                         <td>{getReportOperationLabel(report)}</td>
-                        <td className="test-report-teststeps -cell">
+                        <td className="test-report-teststeps-cell">
                         <details className="test-report-logs" open={false}>
                           <summary>View steps ({testCaseBullets.length})</summary>
                           <div className="test-report-case-lines">
@@ -1199,8 +1435,52 @@ function TestReportPage({ masters = [] }) {
                           </div>
                         </details>
                       </td>
-                      <td className="test-report-reason-cell">{reasonText}</td>
+                      <td className="test-report-reason-cell">
+                        {isComplianceReport(report) && complianceFailedReasonLines.length > 1 ? (
+                          <details className="test-report-logs" open={false}>
+                            <summary>
+                              View reasons ({complianceFailedReasonLines.length} failed steps)
+                            </summary>
+                            <div className="test-report-case-lines" style={{ whiteSpace: 'pre-wrap' }}>
+                              {complianceFailedReasonLines.map((line, idx) => (
+                                <div key={`${report.id}-reason-${idx}`}>{line}</div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : (
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{reasonText}</div>
+                        )}
+                      </td>
                       <td className="test-report-logs-cell">
+                        {complianceStepRows.length > 0 && (
+                          <details className="test-report-logs" open={false}>
+                            <summary>
+                              Compliance step results ({compliancePassedCount}/{complianceStepRows.length} passed)
+                            </summary>
+                            <div className="test-report-case-lines" style={{ overflowX: 'auto' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Step</th>
+                                    <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Result</th>
+                                    <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #d1d5db' }}>Info</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {complianceStepRows.map((item, index) => (
+                                    <tr key={`${report.id}-compliance-step-${index}`}>
+                                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb' }}>{item.step}</td>
+                                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: item.passed ? '#15803d' : '#b91c1c' }}>
+                                        {item.result}
+                                      </td>
+                                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb' }}>{item.info || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </details>
+                        )}
                         {auditComparisonRows.length > 0 && (
                           <details className="test-report-logs" open={false}>
                             <summary>
@@ -1237,23 +1517,28 @@ function TestReportPage({ masters = [] }) {
                         ) : (
                           !auditComparisonRows.length && emptyText(report, 'No log details')
                         )}
-                      </td>
+                        </td>
                         <td className="test-report-url-cell">
-                          {report.screenshotUrl ? (
-                            <a href={report.screenshotUrl} target="_blank" rel="noreferrer" className="test-report-link">
-                              Open Screenshot
-                            </a>
-                          ) : emptyText(report, 'No screenshot saved')}
+                          {screenshotUrl ? (
+                            <div>
+                              <a href={screenshotUrl} target="_blank" rel="noreferrer" className="test-report-link">
+                                Open Screenshot
+                              </a>
+                              {report.screenshotStep && (
+                                <span className="screenshot-step-badge">{report.screenshotStep}</span>
+                              )}
+                            </div>
+                          ) : <span className="muted">—</span>}
                         </td>
                         <td className="test-report-url-cell">
                           {recLoading ? (
                             <span className="muted">Loading...</span>
                           ) : matchedRec ? (
                             <a href={matchedRec.url} target="_blank" rel="noreferrer" className="test-report-link">
-                              Open Recording URL
+                              Open Recording
                             </a>
                           ) : (
-                            <span className="muted">{emptyText(report, 'No recording found')}</span>
+                            <span className="muted">—</span>
                           )}
                         </td>
                         {/* ── Download column ── */}
@@ -1303,7 +1588,10 @@ function TestReportPage({ masters = [] }) {
         {recError && <p className="status-error">{recError}</p>}
 
         {!recLoading && recordings.length === 0 && !recError && (
-          <p className="muted">No recordings found yet. Run any test and refresh.</p>
+          <div className="empty-state-box">
+            <strong>No recordings found yet</strong>
+            Run any test and refresh to see captured videos here.
+          </div>
         )}
 
         {recordings.length > 0 && (

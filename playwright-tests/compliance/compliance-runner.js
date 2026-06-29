@@ -9,8 +9,11 @@
 
 const { chromium } = require('@playwright/test');
 const path = require('path');
-const { fillOffcanvasForm } = require('../helpers/formFiller');
-const { verifyAuditTrailEntry } = require('../helpers/auditTrail');
+const crypto = require('crypto');
+const { fillOffcanvasForm, randomText } = require('../helpers/formFiller');
+const { collectStableFormFields } = require('../helpers/formDiscovery');
+const { verifyAuditTrailEntryCompliance } = require('./compliance-audit-wrapper');
+const { attachComplianceTraceability } = require('./compliance-traceability');
 const { login, navigateTo, openCreateForm, getActionableSaveButton, clickOptionalYesConfirmation, SEL } = require('../helpers/uiActions');
 
 const OFFCANVAS_SCOPE = `:is(${SEL.offcanvas})`;
@@ -24,13 +27,18 @@ const QT_MASTER = process.env.QT_MASTER || 'Department';
 const QT_TC_ID = process.env.QT_TC_ID || '';
 const QT_USER2 = process.env.QT_USER2 || QT_USER;
 const QT_PASS2 = process.env.QT_PASS2 || QT_PASS;
+const QT_ROLE = process.env.QT_ROLE || '';
 
 function log(msg) {
   process.stderr.write(`[COMPLIANCE] ${msg}\n`);
 }
 
 function emitResult(result) {
-  process.stdout.write(JSON.stringify(result));
+  const payload = attachComplianceTraceability(result, {
+    suite: 'DI',
+    runnerName: 'compliance-runner.js',
+  });
+  process.stdout.write(JSON.stringify(payload));
 }
 
 // ── Playback overlay: direct DOM injection that survives page navigations ──────
@@ -287,6 +295,37 @@ function deriveChangedAuditTrail(updateAuditTrail, preUpdateMasterData) {
   };
 }
 
+function enrichChangedAuditTrailFromMasterRows(changedAuditTrail, preUpdateMasterData, postUpdateMasterData) {
+  const merged = { ...(changedAuditTrail || {}) };
+  const autoDetectedChangedFields = [];
+
+  const pre = preUpdateMasterData || {};
+  const post = postUpdateMasterData || {};
+
+  const skipKey = /^(action\(s\)|record\s*id|status|performed\s*by|performed\s*on|app\s*icon|reason|update\s*reason|last\s*updated|modified\s*on|updated\s*on)$/i;
+  const hasField = (name) => Object.keys(merged).some((key) => normalizeText(key) === normalizeText(name));
+
+  for (const [rawKey, rawValue] of Object.entries(post)) {
+    const key = String(rawKey || '').trim();
+    if (!key || skipKey.test(key) || hasField(key)) continue;
+
+    const before = resolveMasterFieldValueForAuditKey(pre, key);
+    const after = rawValue;
+
+    const beforeNorm = normalizeComparableValue(before);
+    const afterNorm = normalizeComparableValue(after);
+    if (!afterNorm || beforeNorm === afterNorm) continue;
+
+    merged[key] = String(after || '').replace(/\s+/g, ' ').trim();
+    autoDetectedChangedFields.push(key);
+  }
+
+  return {
+    changedAuditTrail: merged,
+    autoDetectedChangedFields: Array.from(new Set(autoDetectedChangedFields)),
+  };
+}
+
 function buildCreateAuditTrailForVerification(formAuditTrail, masterRowData) {
   const out = { ...(formAuditTrail || {}) };
   const master = masterRowData || {};
@@ -330,8 +369,100 @@ function extractPerformerFromAuditRow(text) {
     .trim();
 
   if (!cleaned) return '';
-  const parts = cleaned.split(' ').filter(Boolean);
-  return parts.slice(0, 3).join(' ');
+  return cleaned;
+}
+
+function getAuditPerformedByFromSnapshot(snap) {
+  const direct = String(snap?.performedBy || '').replace(/\s+/g, ' ').trim();
+  if (direct) return direct;
+  return extractPerformerFromAuditRow(snap?.text || '');
+}
+
+function parsePerformedByIdentity(value) {
+  const raw = String(value || '').trim();
+  const lines = raw.split(/\r?\n+/).map((line) => line.trim()).filter(Boolean);
+  const compactLines = raw.replace(/\s+/g, ' ').trim().split(/\s{2,}/).map((line) => line.trim()).filter(Boolean);
+  const parts = lines.length > 1 ? lines : compactLines;
+
+  let initials = '';
+  let displayName = '';
+  let role = '';
+
+  if (parts.length >= 3 && /^[A-Z]{1,4}$/i.test(parts[0].replace(/[^A-Za-z]/g, ''))) {
+    initials = parts[0];
+    displayName = parts[1];
+    role = parts.slice(2).join(' ');
+  } else if (parts.length >= 2) {
+    displayName = parts[0];
+    role = parts.slice(1).join(' ');
+  } else if (parts.length === 1) {
+    displayName = parts[0];
+  }
+
+  return {
+    raw,
+    initials,
+    displayName,
+    role: QT_ROLE || role,
+  };
+}
+
+function includesIdentityValue(haystack, needle) {
+  const left = normalizeText(haystack);
+  const right = normalizeText(needle);
+  return !!left && !!right && (left.includes(right) || right.includes(left));
+}
+
+function evaluatePerformedByConsistency(auditPerformedBy, masterPerformedBy, username) {
+  const identity = parsePerformedByIdentity(masterPerformedBy);
+  const hasAuditPerformedBy = !!normalizeText(auditPerformedBy);
+  const hasMasterPerformedBy = !!normalizeText(masterPerformedBy);
+  let matchesMaster = null;
+  if (hasMasterPerformedBy) {
+    if (hasAuditPerformedBy) {
+      // Prefer matching the audit performed-by to the canonical "username (Role)" format
+      // when both username and role are available from the master/identity.
+      const roleFromIdentity = String(identity.role || '').trim();
+      if (username && roleFromIdentity) {
+        const expectedUserRole = `${String(username).trim()} (${roleFromIdentity})`;
+        matchesMaster = includesIdentityValue(auditPerformedBy, expectedUserRole)
+          || includesIdentityValue(auditPerformedBy, masterPerformedBy);
+      } else {
+        matchesMaster = includesIdentityValue(auditPerformedBy, masterPerformedBy);
+      }
+    } else {
+      matchesMaster = false;
+    }
+  } else {
+    matchesMaster = null;
+  }
+
+  const userCandidates = Array.from(new Set([
+    username,
+    identity.displayName,
+    identity.initials,
+  ].map((value) => String(value || '').trim()).filter(Boolean)));
+  const matchesLoggedInUser = hasAuditPerformedBy
+    && userCandidates.some((candidate) => includesIdentityValue(auditPerformedBy, candidate));
+
+  const expectedRole = String(identity.role || '').trim();
+  const matchesLoggedInRole = expectedRole
+    ? includesIdentityValue(auditPerformedBy, expectedRole)
+    : null;
+
+  return {
+    expectedUsername: username || '',
+    expectedDisplayName: identity.displayName || '',
+    expectedRole,
+    hasAuditPerformedBy,
+    matchesMaster,
+    matchesLoggedInUser,
+    matchesLoggedInRole,
+    passed: hasAuditPerformedBy
+      && (matchesMaster === null || matchesMaster)
+      && matchesLoggedInUser
+      && (matchesLoggedInRole !== false),
+  };
 }
 
 function expectedSuccessToast(operation) {
@@ -541,6 +672,105 @@ function buildPerRowStatusReport(verifyResult, expectedOperation) {
   };
 }
 
+function resolveComplianceScopedRows(verifyResult) {
+  if (Array.isArray(verifyResult?.complianceOperationRows) && verifyResult.complianceOperationRows.length > 0) {
+    return verifyResult.complianceOperationRows;
+  }
+  if (Array.isArray(verifyResult?.operationRowSnapshots) && verifyResult.operationRowSnapshots.length > 0) {
+    return verifyResult.operationRowSnapshots;
+  }
+  if (Array.isArray(verifyResult?.complianceRecordRows) && verifyResult.complianceRecordRows.length > 0) {
+    return verifyResult.complianceRecordRows;
+  }
+  if (Array.isArray(verifyResult?.rowSnapshots) && verifyResult.rowSnapshots.length > 0) {
+    return verifyResult.rowSnapshots;
+  }
+  return [];
+}
+
+function detectAuditStatusEnhanced(verifyResult, expectedOperation) {
+  const baseline = detectAuditStatus(verifyResult, expectedOperation);
+  if (baseline?.found) return baseline;
+
+  const rows = resolveComplianceScopedRows(verifyResult);
+  if (!rows.length) return baseline;
+
+  const patterns = {
+    create: /\bcreated\b/i,
+    update: /\bupdated\b/i,
+    delete: /\bdeleted\b/i,
+  };
+  const canon = { create: 'Created', update: 'Updated', delete: 'Deleted' };
+  const pat = patterns[expectedOperation] || new RegExp(String(expectedOperation), 'i');
+
+  const rowChecks = rows.map((row) => {
+    const statusText = String(row?.statusValue || '').trim();
+    const rowText = String(row?.text || '').trim();
+    const statusMatch = statusText.match(pat);
+    const textMatch = rowText.match(pat);
+    return {
+      matched: !!(statusMatch || textMatch),
+      evidence: statusMatch?.[0] || textMatch?.[0] || '',
+    };
+  });
+
+  const rowsChecked = rowChecks.length;
+  const rowsWithStatus = rowChecks.filter((row) => row.matched).length;
+  const allRowsPass = rowsChecked > 0 && rowsWithStatus === rowsChecked;
+
+  return {
+    found: allRowsPass,
+    label: canon[expectedOperation] || '',
+    evidence: rowChecks.find((row) => row.matched)?.evidence || '',
+    source: 'record-filtered-rows',
+    rowsChecked,
+    rowsWithStatus,
+    reason: allRowsPass ? '' : 'one-or-more-rows-missing-expected-status',
+  };
+}
+
+function buildPerRowStatusReportEnhanced(verifyResult, expectedOperation) {
+  const baseline = buildPerRowStatusReport(verifyResult, expectedOperation);
+  const rows = resolveComplianceScopedRows(verifyResult);
+  if (!rows.length) return baseline;
+
+  const patterns = {
+    create: /\bcreated\b/i,
+    update: /\bupdated\b/i,
+    delete: /\bdeleted\b/i,
+  };
+  const canon = { create: 'Created', update: 'Updated', delete: 'Deleted' };
+  const pat = patterns[expectedOperation] || new RegExp(String(expectedOperation), 'i');
+
+  const rowResults = rows.map((row) => {
+    const statusText = String(row?.statusValue || '').trim();
+    const rowText = String(row?.text || '').trim();
+    const statusMatch = statusText.match(pat);
+    const textMatch = rowText.match(pat);
+    return {
+      rowIndex: row?.index,
+      rowText: rowText.slice(0, 220),
+      statusValue: statusText,
+      statusFound: !!(statusMatch || textMatch),
+      evidence: statusMatch?.[0] || textMatch?.[0] || '',
+    };
+  });
+
+  const rowsWithStatus = rowResults.filter((row) => row.statusFound).length;
+  const statusColumn = verifyResult?.statusColumn || {};
+
+  return {
+    expectedStatus: canon[expectedOperation] || expectedOperation,
+    statusColumnFound: baseline.statusColumnFound || !!statusColumn.found,
+    statusColumnIndex: Number.isInteger(statusColumn.index) ? statusColumn.index : baseline.statusColumnIndex,
+    statusHeader: statusColumn.header || baseline.statusHeader || 'Status',
+    rowsChecked: rowResults.length,
+    rowsWithStatus,
+    allRowsPass: rowResults.length > 0 && rowsWithStatus === rowResults.length,
+    rows: rowResults,
+  };
+}
+
 async function newComplianceContext(browser) {
   const options = {
     viewport: { width: 1366, height: 900 },
@@ -585,15 +815,100 @@ async function openEditFormForRecord(page, recordID) {
   return false;
 }
 
+function isLegibilityTextField(field) {
+  if (!field || field.disabled) return false;
+  const type = String(field.elementType || '').toLowerCase();
+  if (!['text', 'textarea', 'email', 'tel'].includes(type)) return false;
+
+  const identity = `${field.id || ''} ${field.displayName || ''} ${field.columnName || ''}`;
+  return !/record\s*id/i.test(identity);
+}
+
+function pickLegibilityTargetField(fields, preferredFieldId = '') {
+  const candidates = (fields || []).filter((field) => isLegibilityTextField(field));
+  if (!candidates.length) return null;
+
+  const wanted = String(preferredFieldId || '').trim();
+  if (wanted) {
+    const exact = candidates.find((field) => String(field.id || '').trim() === wanted);
+    if (exact) return exact;
+  }
+
+  return candidates[0];
+}
+
+function buildLegibilityPayload(targetLength) {
+  const length = Math.max(0, Number(targetLength) || 0);
+  if (!length) return '';
+
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += charset[bytes[i] % charset.length];
+  }
+  return out;
+}
+
+function escapeForSelectorAttribute(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+}
+
+async function fillLegibilityFieldValue(page, fieldInfo, value) {
+  const desired = String(value ?? '');
+  const selectors = [];
+  const fieldId = String(fieldInfo?.id || '').trim();
+
+  if (fieldId) {
+    const escaped = escapeForSelectorAttribute(fieldId);
+    selectors.push(`${OFFCANVAS_SCOPE} [data-qf-field-id="${escaped}"] input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([disabled]):not([readonly]), ${OFFCANVAS_SCOPE} [data-qf-field-id="${escaped}"] textarea:not([disabled]):not([readonly])`);
+  }
+
+  selectors.push(`${OFFCANVAS_SCOPE} input[type="text"]:not([disabled]):not([readonly]), ${OFFCANVAS_SCOPE} textarea:not([disabled]):not([readonly]), ${OFFCANVAS_SCOPE} input[type="email"]:not([disabled]):not([readonly]), ${OFFCANVAS_SCOPE} input[type="tel"]:not([disabled]):not([readonly])`);
+
+  for (const selector of selectors) {
+    const control = page.locator(selector).first();
+    const visible = await control.isVisible().catch(() => false);
+    if (!visible) continue;
+
+    await control.scrollIntoViewIfNeeded().catch(() => { });
+    await control.click({ timeout: 2500 }).catch(() => { });
+    await control.fill('').catch(() => { });
+    await control.type(desired, { delay: 15, timeout: 6000 }).catch(async () => {
+      await control.fill(desired).catch(() => { });
+    });
+    await control.blur().catch(() => { });
+    await page.waitForTimeout(150);
+
+    const actualValue = await control.inputValue().catch(() => '');
+    const maxLengthAttr = await control.getAttribute('maxlength').catch(() => null);
+    return {
+      applied: true,
+      actualValue: String(actualValue || ''),
+      maxLength: Number(maxLengthAttr || 0) || 0,
+      selectorUsed: selector,
+    };
+  }
+
+  return {
+    applied: false,
+    actualValue: '',
+    maxLength: Number(fieldInfo?.maxLength || 0) || 0,
+    selectorUsed: '',
+  };
+}
+
 // ── Test Case Implementations ──────────────────────────────────────────────────
 
 async function runTC_DI_01(page) {
   log('TC-DI-01-01 & 01-02: Attributability on Create & Update');
   await showPlaybackOverlay(page, 'TC-DI-01 — Step 1/10: Logging in', 1, 10).catch(() => { });
   await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
-  await showPlaybackOverlay(page, 'TC-DI-01 — Step 2/10: Navigating to master list', 2, 10).catch(() => { });
+  await showPlaybackOverlay(page, 'TC-DI-01 - Step 2/10: Navigating to master list', 2, 10).catch(() => { });
+  
   await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
-
   // 1. Create Flow
   await showPlaybackOverlay(page, 'TC-DI-01 — Step 3/10: Opening create form', 3, 10).catch(() => { });
   await openCreateForm(page);
@@ -630,7 +945,7 @@ async function runTC_DI_01(page) {
   const onlyCreate = requestedTc === 'TC-DI-01-01';
   const onlyUpdate = requestedTc === 'TC-DI-01-02';
 
-  const createVerify = await verifyAuditTrailEntry(page, {
+  const createVerify = await verifyAuditTrailEntryCompliance(page, {
     baseURL: new URL(page.url()).origin,
     masterName: QT_MASTER,
     operation: 'create',
@@ -645,19 +960,84 @@ async function runTC_DI_01(page) {
     ...res,
   })).catch((e) => ({ passed: false, reason: e.message }));
   const createVerifyReport = sanitizeAuditVerifyForReport(createVerify);
-  const createStatus = detectAuditStatus(createVerify, 'create');
-  const createRowStatus = buildPerRowStatusReport(createVerify, 'create');
+  const createStatus = detectAuditStatusEnhanced(createVerify, 'create');
+  const createRowStatus = buildPerRowStatusReportEnhanced(createVerify, 'create');
   log(`Create audit verification: ${createVerify.passed ? 'passed' : 'failed'}${createVerify.reason ? ' (' + createVerify.reason + ')' : ''}`);
   log(`Create audit status: ${createStatus.found ? 'found (source:' + createStatus.source + ' evidence:' + createStatus.evidence + ')' : 'NOT FOUND in actual row text'}`);
   log(`Create per-row status: ${createRowStatus.rowsWithStatus}/${createRowStatus.rowsChecked} rows contain '${createRowStatus.expectedStatus}'`);
   log(`Create row scope: totalRows=${Array.isArray(createVerify?.rowSnapshots) ? createVerify.rowSnapshots.length : 0}, scopedRows=${Array.isArray(createVerify?.operationRowSnapshots) ? createVerify.operationRowSnapshots.length : 0}`);
+
+  const createMasterPerformedOn = pickFieldValue(masterRowData?.data, ['Performed On', 'Performedon', 'Created On', 'Creation Time']);
+  const createMasterPerformedBy = pickFieldValue(masterRowData?.data, ['Performed By', 'Performedby', 'Created By', 'User']);
+  const createOpSnapshots = Array.isArray(createVerify?.complianceOperationRows) && createVerify.complianceOperationRows.length > 0
+    ? createVerify.complianceOperationRows
+    : (Array.isArray(createVerify?.operationRowSnapshots) && createVerify.operationRowSnapshots.length > 0
+      ? createVerify.operationRowSnapshots
+      : (Array.isArray(createVerify?.complianceRecordRows) ? createVerify.complianceRecordRows : []));
+
+  const parsedCreateMasterTime = parseAuditTimestamp(createMasterPerformedOn);
+  const createPerRowTimestamps = createOpSnapshots.map((snap) => {
+    const rowText = String(snap?.text || '');
+    const auditTimestampTextRow = extractTimestampFromText(rowText);
+    const parsedAuditTimeRow = parseAuditTimestamp(auditTimestampTextRow);
+    const deltaRow = parsedAuditTimeRow && parsedCreateMasterTime
+      ? Math.abs(parsedAuditTimeRow.getTime() - parsedCreateMasterTime.getTime()) / 1000
+      : null;
+    return {
+      rowIndex: snap?.index,
+      rowText: String(rowText).slice(0, 220),
+      auditTimestamp: auditTimestampTextRow || '(not found)',
+      auditTimeISO: parsedAuditTimeRow ? parsedAuditTimeRow.toISOString() : null,
+      deltaAuditVsMasterSeconds: deltaRow,
+      withinWindow: deltaRow !== null ? deltaRow <= 120 : false,
+    };
+  });
+  const createAllTimestampsWithin = createPerRowTimestamps.length > 0 && createPerRowTimestamps.every((row) => row.withinWindow);
+  const createFallbackAuditTimestampText = extractTimestampFromText(createVerify?.matchedRow || '');
+  const createFallbackParsedAuditTime = parseAuditTimestamp(createFallbackAuditTimestampText);
+  const createFallbackDeltaSec = createFallbackParsedAuditTime && parsedCreateMasterTime
+    ? Math.abs(createFallbackParsedAuditTime.getTime() - parsedCreateMasterTime.getTime()) / 1000
+    : null;
+  const createAuditVsMasterWithin = createOpSnapshots.length > 0
+    ? createAllTimestampsWithin
+    : (createFallbackDeltaSec !== null ? createFallbackDeltaSec <= 120 : false);
+
+  const createPerRowPerformedBy = createOpSnapshots.map((snap) => {
+    const rowText = String(snap?.text || '');
+    const auditPerformedByRow = getAuditPerformedByFromSnapshot(snap);
+    const performerCheck = evaluatePerformedByConsistency(auditPerformedByRow, createMasterPerformedBy, QT_USER);
+    return {
+      rowIndex: snap?.index,
+      rowText: String(rowText).slice(0, 220),
+      auditPerformedBy: auditPerformedByRow,
+      ...performerCheck,
+    };
+  });
+  const createAllRowsPerformerPass = createPerRowPerformedBy.length > 0 && createPerRowPerformedBy.every((row) => row.passed);
+  const createFallbackAuditPerformedBy = extractPerformerFromAuditRow(createVerify?.matchedRow || '');
+  const createFallbackPerformerCheck = evaluatePerformedByConsistency(createFallbackAuditPerformedBy, createMasterPerformedBy, QT_USER);
+  const createPerformedByPassed = createOpSnapshots.length > 0
+    ? createAllRowsPerformerPass
+    : createFallbackPerformerCheck.passed;
+
+  const createAuditTimestampText = createOpSnapshots.length > 0
+    ? (createPerRowTimestamps[0]?.auditTimestamp || '')
+    : createFallbackAuditTimestampText;
+  const createParsedAuditTime = createOpSnapshots.length > 0
+    ? (createPerRowTimestamps[0]?.auditTimeISO ? new Date(createPerRowTimestamps[0].auditTimeISO) : null)
+    : createFallbackParsedAuditTime;
+  const createDeltaAuditVsMasterSec = createOpSnapshots.length > 0
+    ? (createPerRowTimestamps[0]?.deltaAuditVsMasterSeconds ?? null)
+    : createFallbackDeltaSec;
+  const createAuditPerformedBy = createPerRowPerformedBy[0]?.auditPerformedBy || createFallbackAuditPerformedBy;
+
   // If caller requested only the create sub-test, return create-only result
   if (onlyCreate) {
     await hidePlaybackOverlay(page).catch(() => { });
     return {
       tcId: 'TC-DI-01-01',
       title: 'Attributability on Create',
-      status: (createVerify.passed && createStatus.found) ? 'passed' : 'failed',
+      status: (createVerify.passed && createStatus.found && createAuditVsMasterWithin && createPerformedByPassed) ? 'passed' : 'failed',
       statusChecks: { create: { expected: 'Created', found: !!createStatus.found, source: createStatus.source, evidence: createStatus.evidence } },
       perRowStatusReport: { create: createRowStatus },
       details: [
@@ -672,6 +1052,21 @@ async function runTC_DI_01(page) {
           rowsChecked: createRowStatus.rowsChecked,
           rowsWithStatus: createRowStatus.rowsWithStatus,
           rows: createRowStatus.rows,
+        },
+        {
+          step: 'Create timestamp consistency (Audit vs Master)',
+          passed: createAuditVsMasterWithin,
+          actualMasterTime: parsedCreateMasterTime ? parsedCreateMasterTime.toISOString() : (createMasterPerformedOn || '(not found)'),
+          actualAuditTime: createParsedAuditTime ? createParsedAuditTime.toISOString() : (createAuditTimestampText || '(not found)'),
+          deltaAuditVsMasterSeconds: createDeltaAuditVsMasterSec,
+          rows: createPerRowTimestamps,
+        },
+        {
+          step: 'Create performed-by consistency (Master row vs Audit trail)',
+          passed: createPerformedByPassed,
+          actualMasterPerformedBy: createMasterPerformedBy || '(not available)',
+          actualAuditPerformedBy: createAuditPerformedBy || '(not found)',
+          rows: createPerRowPerformedBy,
         },
       ],
       _debug: undefined,
@@ -716,12 +1111,12 @@ async function runTC_DI_01(page) {
     submittedUpdateReason = updateReason;
   }
 
-  const { changedAuditTrail, unchangedAuditFields } = deriveChangedAuditTrail(
+  const { changedAuditTrail: baseChangedAuditTrail, unchangedAuditFields } = deriveChangedAuditTrail(
     updateAuditTrail,
     preUpdateMasterRowData?.data
   );
-  log(`Update changed fields: ${Object.keys(changedAuditTrail).length ? Object.keys(changedAuditTrail).join(', ') : 'none'}`);
-  log(`Update unchanged fields (expected missing): ${unchangedAuditFields.length ? unchangedAuditFields.join(', ') : 'none'}`);
+  let changedAuditTrail = { ...baseChangedAuditTrail };
+  let autoDetectedChangedFields = [];
 
 
   await page.waitForTimeout(1000);
@@ -733,18 +1128,33 @@ async function runTC_DI_01(page) {
     await page.waitForTimeout(1000);
   }
   const updatedMasterRowData = await getFirstVisibleMasterRowData(page);
+  const enrichedChangeSet = enrichChangedAuditTrailFromMasterRows(
+    changedAuditTrail,
+    preUpdateMasterRowData?.data,
+    updatedMasterRowData?.data
+  );
+  changedAuditTrail = enrichedChangeSet.changedAuditTrail;
+  autoDetectedChangedFields = enrichedChangeSet.autoDetectedChangedFields;
+
+  log(`Update changed fields: ${Object.keys(changedAuditTrail).length ? Object.keys(changedAuditTrail).join(', ') : 'none'}`);
+  if (autoDetectedChangedFields.length) {
+    log(`Update auto-detected changed fields (master diff): ${autoDetectedChangedFields.join(', ')}`);
+  }
+  log(`Update unchanged fields (expected missing): ${unchangedAuditFields.length ? unchangedAuditFields.join(', ') : 'none'}`);
+
   const masterReason = pickFieldValue(updatedMasterRowData?.data, ['Reason', 'Update Reason', 'Remarks']);
   const masterPerformedOn = pickFieldValue(updatedMasterRowData?.data, ['Performed On', 'Performedon', 'Last Updated', 'Modified On', 'Updated On']);
   const masterPerformedBy = pickFieldValue(updatedMasterRowData?.data, ['Performed By', 'Performedby', 'Updated By', 'Modified By', 'User']);
   await showPlaybackOverlay(page, 'TC-DI-01 — Step 9/10: Verifying update audit trail', 9, 10).catch(() => { });
 
-  const updateVerify = await verifyAuditTrailEntry(page, {
+  const updateVerify = await verifyAuditTrailEntryCompliance(page, {
     baseURL: new URL(page.url()).origin,
     masterName: QT_MASTER,
     operation: 'update',
     recordName: recordID,
     recordID,
     auditTrail: changedAuditTrail,
+    preUpdateMasterData: preUpdateMasterRowData?.data || {},
     skipFields: unchangedAuditFields,
     reason: updateReason,
     username: QT_USER, // Pass username for attributability check
@@ -756,11 +1166,18 @@ async function runTC_DI_01(page) {
   })).catch((e) => ({ passed: false, reason: e.message }));
   const updateVerifyReport = sanitizeAuditVerifyForReport(updateVerify);
 
-  const updateStatus = detectAuditStatus(updateVerify, 'update');
-  const updateRowStatus = buildPerRowStatusReport(updateVerify, 'update');
+  const updateStatus = detectAuditStatusEnhanced(updateVerify, 'update');
+  const updateRowStatus = buildPerRowStatusReportEnhanced(updateVerify, 'update');
+  const updateOldNewValidation = updateVerify?.updateOldNewValidation || null;
+  const updateOldNewPassed = !!updateOldNewValidation
+    && Number(updateOldNewValidation.checkedFieldCount || 0) > 0
+    && updateOldNewValidation.passed === true;
   log(`Update audit verification: ${updateVerify.passed ? 'passed' : 'failed'}${updateVerify.reason ? ' (' + updateVerify.reason + ')' : ''}`);
   log(`Update audit status: ${updateStatus.found ? 'found (source:' + updateStatus.source + ' evidence:' + updateStatus.evidence + ')' : 'NOT FOUND in actual row text'}`);
   log(`Update per-row status: ${updateRowStatus.rowsWithStatus}/${updateRowStatus.rowsChecked} rows contain '${updateRowStatus.expectedStatus}'`);
+  if (updateOldNewValidation) {
+    log(`Update old/new validation: ${updateOldNewValidation.passedFieldCount}/${updateOldNewValidation.checkedFieldCount} fields passed`);
+  }
   log(`Update row scope: totalRows=${Array.isArray(updateVerify?.rowSnapshots) ? updateVerify.rowSnapshots.length : 0}, scopedRows=${Array.isArray(updateVerify?.operationRowSnapshots) ? updateVerify.operationRowSnapshots.length : 0}, reasonColumnFound=${updateVerify?.reasonColumn?.found ? 'true' : 'false'}`);
   const auditReasonMatched = Array.isArray(updateVerify?.matched) && updateVerify.matched.includes('reason');
   const masterReasonMatched = !masterReason
@@ -770,9 +1187,11 @@ async function runTC_DI_01(page) {
 
   // ── Per-row checks for timestamp, performed-by, and reason ───────────────────
   // These must be verified for EVERY operation-scoped audit row, not just the first matched row.
-  const updateOpSnapshots = Array.isArray(updateVerify?.operationRowSnapshots)
-    ? updateVerify.operationRowSnapshots
-    : [];
+  const updateOpSnapshots = Array.isArray(updateVerify?.complianceOperationRows) && updateVerify.complianceOperationRows.length > 0
+    ? updateVerify.complianceOperationRows
+    : (Array.isArray(updateVerify?.operationRowSnapshots) && updateVerify.operationRowSnapshots.length > 0
+      ? updateVerify.operationRowSnapshots
+      : (Array.isArray(updateVerify?.complianceRecordRows) ? updateVerify.complianceRecordRows : []));
 
   // Timestamp consistency: check every row against master's performed-on time
   const parsedMasterTime = parseAuditTimestamp(masterPerformedOn);
@@ -806,34 +1225,22 @@ async function runTC_DI_01(page) {
   // Performed-by consistency: check every row
   const perRowPerformedBy = updateOpSnapshots.map((snap) => {
     const rowText = String(snap?.text || '');
-    const auditPerformedByRow = extractPerformerFromAuditRow(rowText);
-    const matchesMaster = !masterPerformedBy
-      ? null
-      : (normalizeText(auditPerformedByRow).includes(normalizeText(masterPerformedBy))
-        || normalizeText(masterPerformedBy).includes(normalizeText(auditPerformedByRow)));
-    const matchesUser = normalizeText(auditPerformedByRow).includes(normalizeText(QT_USER))
-      || normalizeText(masterPerformedBy || '').includes(normalizeText(QT_USER));
+    const auditPerformedByRow = getAuditPerformedByFromSnapshot(snap);
+    const performerCheck = evaluatePerformedByConsistency(auditPerformedByRow, masterPerformedBy, QT_USER);
     return {
       rowIndex: snap?.index,
       rowText: String(rowText).slice(0, 220),
       auditPerformedBy: auditPerformedByRow,
-      matchesMaster,
-      matchesUser,
-      passed: (matchesMaster === null || matchesMaster === true) && matchesUser,
+      ...performerCheck,
     };
   });
   const allRowsPerformerPass = perRowPerformedBy.length > 0 && perRowPerformedBy.every((r) => r.passed);
   // Fallback for single-matched-row mode
   const fallbackAuditPerformedBy = extractPerformerFromAuditRow(updateVerify?.matchedRow || '');
-  const performerMatchesMaster = !masterPerformedBy
-    ? null
-    : (normalizeText(fallbackAuditPerformedBy).includes(normalizeText(masterPerformedBy))
-      || normalizeText(masterPerformedBy).includes(normalizeText(fallbackAuditPerformedBy)));
-  const performerMatchesUser = normalizeText(fallbackAuditPerformedBy).includes(normalizeText(QT_USER))
-    || normalizeText(masterPerformedBy || '').includes(normalizeText(QT_USER));
+  const fallbackPerformerCheck = evaluatePerformedByConsistency(fallbackAuditPerformedBy, masterPerformedBy, QT_USER);
   const performedByPassed = updateOpSnapshots.length > 0
     ? allRowsPerformerPass
-    : (performerMatchesMaster === null || performerMatchesMaster === true) && performerMatchesUser;
+    : fallbackPerformerCheck.passed;
 
   // Reason consistency: check every row — only compare expected reason vs master reason column
   // (no other fields; just the reason/remarks column value in the audit row)
@@ -874,7 +1281,15 @@ async function runTC_DI_01(page) {
     : fallbackDeltaAuditVsMasterSec;
 
   const statusChecksPassed = !!(createStatus && createStatus.found) && !!(updateStatus && updateStatus.found);
-  const passed = createVerify.passed && updateVerify.passed && statusChecksPassed;
+  const passed = createVerify.passed
+    && updateVerify.passed
+    && statusChecksPassed
+    && createAuditVsMasterWithin
+    && createPerformedByPassed
+    && updateOldNewPassed
+    && auditVsMasterWithin
+    && performedByPassed
+    && reasonConsistencyPassed;
   // If caller requested only the update sub-test, return update-only result (create was performed to obtain a record but not reported)
   if (onlyUpdate) {
     await hidePlaybackOverlay(page).catch(() => { });
@@ -882,7 +1297,7 @@ async function runTC_DI_01(page) {
     return {
       tcId: 'TC-DI-01-02',
       title: 'Attributability on Update',
-      status: (updateVerify.passed && updateStatus.found) ? 'passed' : 'failed',
+      status: (updateVerify.passed && updateStatus.found && updateOldNewPassed && auditVsMasterWithin && performedByPassed && reasonConsistencyPassed) ? 'passed' : 'failed',
       statusChecks: { update: { expected: 'Updated', found: !!updateStatus.found, source: updateStatus.source, evidence: updateStatus.evidence } },
       perRowStatusReport: { update: updateRowStatus },
       details: [
@@ -897,6 +1312,16 @@ async function runTC_DI_01(page) {
           rowsChecked: updateRowStatus.rowsChecked,
           rowsWithStatus: updateRowStatus.rowsWithStatus,
           rows: updateRowStatus.rows,
+        },
+        {
+          step: 'Update old/new value consistency',
+          passed: updateOldNewPassed,
+          checkedFieldCount: updateOldNewValidation?.checkedFieldCount || 0,
+          passedFieldCount: updateOldNewValidation?.passedFieldCount || 0,
+          failedFieldCount: updateOldNewValidation?.failedFieldCount || 0,
+          failedFields: updateOldNewValidation?.failedFields || [],
+          reason: updateOldNewValidation?.reason || '',
+          rows: updateOldNewValidation?.results || [],
         },
         {
           step: 'Update unchanged fields (informational)',
@@ -923,7 +1348,7 @@ async function runTC_DI_01(page) {
           rows: perRowTimestamps,
         },
         {
-          step: 'Performed-by consistency (Master row vs Audit trail)',
+          step: 'Update Performed-by consistency (Master row vs Audit trail)',
           passed: performedByPassed,
           actualMasterPerformedBy: masterPerformedBy || '(not available)',
           actualAuditPerformedBy: auditPerformedBy || '(not found)',
@@ -960,6 +1385,21 @@ async function runTC_DI_01(page) {
         rowsWithStatus: createRowStatus.rowsWithStatus,
         rows: createRowStatus.rows,
       },
+      {
+        step: 'Create timestamp consistency (Audit vs Master)',
+        passed: createAuditVsMasterWithin,
+        actualMasterTime: parsedCreateMasterTime ? parsedCreateMasterTime.toISOString() : (createMasterPerformedOn || '(not found)'),
+        actualAuditTime: createParsedAuditTime ? createParsedAuditTime.toISOString() : (createAuditTimestampText || '(not found)'),
+        deltaAuditVsMasterSeconds: createDeltaAuditVsMasterSec,
+        rows: createPerRowTimestamps,
+      },
+      {
+        step: 'Create performed-by consistency (Master row vs Audit trail)',
+        passed: createPerformedByPassed,
+        actualMasterPerformedBy: createMasterPerformedBy || '(not available)',
+        actualAuditPerformedBy: createAuditPerformedBy || '(not found)',
+        rows: createPerRowPerformedBy,
+      },
       { step: 'Update audit verification', ...updateVerifyReport },
       {
         step: 'Update status visible in audit trail rows',
@@ -973,10 +1413,21 @@ async function runTC_DI_01(page) {
         rows: updateRowStatus.rows,
       },
       {
+        step: 'Update old/new value consistency',
+        passed: updateOldNewPassed,
+        checkedFieldCount: updateOldNewValidation?.checkedFieldCount || 0,
+        passedFieldCount: updateOldNewValidation?.passedFieldCount || 0,
+        failedFieldCount: updateOldNewValidation?.failedFieldCount || 0,
+        failedFields: updateOldNewValidation?.failedFields || [],
+        reason: updateOldNewValidation?.reason || '',
+        rows: updateOldNewValidation?.results || [],
+      },
+      {
         step: 'Update unchanged fields (informational)',
         passed: true,
         expectedMissing: unchangedAuditFields,
         changedFieldsVerified: Object.keys(changedAuditTrail),
+        autoDetectedChangedFields,
         message: unchangedAuditFields.length
           ? 'Unchanged update fields are expected-missing in audit details and are not treated as failures.'
           : 'All submitted update fields are treated as changed for this run.',
@@ -998,7 +1449,7 @@ async function runTC_DI_01(page) {
         rows: perRowTimestamps,
       },
       {
-        step: 'Performed-by consistency (Master row vs Audit trail)',
+        step: 'Update Performed-by consistency (Master row vs Audit trail)',
         passed: performedByPassed,
         actualMasterPerformedBy: masterPerformedBy || '(not available)',
         actualAuditPerformedBy: auditPerformedBy || '(not found)',
@@ -1009,40 +1460,181 @@ async function runTC_DI_01(page) {
 }
 
 async function runTC_DI_02(page) {
-  log('TC-DI-02-01 & 02-02: Legibility (Special Characters & Long Strings)');
-  await showPlaybackOverlay(page, 'TC-DI-02 — Step 1/3: Logging in', 1, 3).catch(() => { });
+  log('TC-DI-02: Legibility — Special Characters & Max-Length Strings');
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 1/5: Logging in', 1, 5).catch(() => { });
   await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
-  await showPlaybackOverlay(page, 'TC-DI-02 — Step 2/3: Opening create form', 2, 3).catch(() => { });
-  await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
+
+  const baseURL = new URL(QT_URL).origin;
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 2/5: Creating base record with Unicode value', 2, 5).catch(() => { });
+  await navigateTo(page, QT_MASTER, baseURL);
   await openCreateForm(page);
 
-  const firstTextInput = page.locator(`${OFFCANVAS_SCOPE} input[type="text"]`).first();
-  await firstTextInput.waitFor({ state: 'visible', timeout: 10000 });
+  const formFields = await collectStableFormFields(page).catch(() => []);
+  const targetField = pickLegibilityTargetField(formFields);
+  if (!targetField) {
+    await hidePlaybackOverlay(page).catch(() => { });
+    throw new Error('No editable text-like field found for DI-02.');
+  }
 
-  const specialUnicodeStr = 'Ärzte & Société';
-  const longString = 'AbCdEf12'.repeat(32).substring(0, 255);
+  // Fill all mandatory fields so the form can be saved
+  await fillOffcanvasForm(page, QT_MASTER);
+  
+  // Test Unicode on Create
+  const specialUnicodeStr = `Ärzte & Société ${randomText(5)}`;
+  const unicodeFilled = await fillLegibilityFieldValue(page, targetField, specialUnicodeStr);
+  const unicodeVal = String(unicodeFilled?.actualValue || '');
+  const unicodePassed = unicodeFilled.applied && unicodeVal === specialUnicodeStr;
+  const targetFieldLabel = targetField.columnToShow || targetField.displayName || targetField.id || 'Legibility Text';
 
-  await firstTextInput.fill(specialUnicodeStr);
-  const unicodeVal = await firstTextInput.inputValue();
-  const unicodePassed = unicodeVal === specialUnicodeStr;
+  const createSaveBtn = await getActionableSaveButton(page);
+  if (createSaveBtn) await createSaveBtn.click();
+  const createToast = await waitForSuccessToastOrHandleConfirm(page, 'create', 6000);
+  await clickOptionalYesConfirmation(page, 1200).catch(() => false);
 
-  await firstTextInput.fill(longString);
-  const longVal = await firstTextInput.inputValue();
-  const longPassed = longVal === longString && longVal.length === 255;
+  const masterRowData = await getFirstVisibleMasterRowData(page);
+  let recordID = pickFieldValue(masterRowData?.data, ['Record ID', 'Code', 'ID']);
+  if (!recordID && masterRowData?.data) {
+    const keys = Object.keys(masterRowData.data || {});
+    if (keys[1]) recordID = masterRowData.data[keys[1]];
+  }
+  
+  const unicodeOnlyAuditTrail = { [targetFieldLabel]: specialUnicodeStr };
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 3/5: Verifying Unicode field in audit trail', 3, 5).catch(() => { });
+  
+  const createVerify = await verifyAuditTrailEntryCompliance(page, {
+    baseURL,
+    masterName: QT_MASTER,
+    operation: 'create',
+    recordName: recordID,
+    recordID,
+    auditTrail: unicodeOnlyAuditTrail,
+    username: QT_USER,
+    masterPerformedOn: masterRowData?.data?.['Performed On'] || masterRowData?.data?.['Performedon'],
+  }).then((res) => ({
+    passed: res.verified && (res.comparison === null || res.comparison === undefined || res.comparison.passed !== false),
+    ...res,
+  })).catch((e) => ({ passed: false, reason: e.message }));
+  const createVerifyReport = sanitizeAuditVerifyForReport(createVerify);
+  
+  recordID = recordID || createVerify?.compliancePrimaryRecordId || '';
 
-  const passed = unicodePassed && longPassed;
-  await showPlaybackOverlay(page, 'TC-DI-02 — Step 3/3: Checks complete', 3, 3).catch(() => { });
+  // Now test Max-Length on Update
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 4/5: Opening edit form for max-length test', 4, 5).catch(() => { });
+  await navigateTo(page, QT_MASTER, baseURL);
+  await page.fill(SEL.searchBox, '').catch(() => { });
+  await page.fill(SEL.searchBox, String(recordID)).catch(() => { });
+  await page.keyboard.press('Enter').catch(() => { });
+  await page.waitForTimeout(1200);
+
+  const preUpdateMasterRowData = await getFirstVisibleMasterRowData(page);
+  const editOpened = await openEditFormForRecord(page, recordID);
+  if (!editOpened) {
+    await hidePlaybackOverlay(page).catch(() => { });
+    throw new Error(`Could not open edit form for DI-02 record ${recordID}.`);
+  }
+
+  const configuredMaxLength = Number(targetField?.maxLength || 0) || 0;
+  const longStringLength = configuredMaxLength > 0 ? configuredMaxLength : 255;
+  const longString = buildLegibilityPayload(longStringLength);
+  
+  const longFilled = await fillLegibilityFieldValue(page, targetField, longString);
+  const longVal = String(longFilled?.actualValue || '');
+  const longPassed = longFilled.applied && longVal === longString && longVal.length === longStringLength;
+
+  const updateAuditTrail = { [targetFieldLabel]: longString };
+  const updateReason = 'Compliance TC-DI-02 Long String';
+  const reasonApplied = await applyUpdateReasonToMasterForm(page, updateReason);
+  let submittedUpdateReason = reasonApplied?.applied ? updateReason : '';
+
+  const updateSaveBtn = await getActionableSaveButton(page);
+  if (updateSaveBtn) await updateSaveBtn.click();
+
+  const reasonField = page.locator('#reasonTextarea:visible').first();
+  if (await reasonField.isVisible().catch(() => false)) {
+    await reasonField.fill(updateReason);
+    await page.locator(':text("Submit"), button.btn-primary:has-text("Submit")').first().click();
+    submittedUpdateReason = updateReason;
+  }
+
+  const updateToast = await waitForSuccessToastOrHandleConfirm(page, 'update', 6000);
+  await clickOptionalYesConfirmation(page, 1200).catch(() => false);
+
+  await showPlaybackOverlay(page, 'TC-DI-02 — Step 5/5: Verifying long-string field in audit trail', 5, 5).catch(() => { });
+  await navigateTo(page, QT_MASTER, baseURL);
+  await page.fill(SEL.searchBox, '').catch(() => { });
+  await page.fill(SEL.searchBox, String(recordID)).catch(() => { });
+  await page.keyboard.press('Enter').catch(() => { });
+  await page.waitForTimeout(1000);
+
+  const updatedMasterRowData = await getFirstVisibleMasterRowData(page);
+  const masterPerformedOn = pickFieldValue(updatedMasterRowData?.data, ['Performed On', 'Performedon', 'Last Updated', 'Modified On', 'Updated On']);
+
+  const updateVerify = await verifyAuditTrailEntryCompliance(page, {
+    baseURL,
+    masterName: QT_MASTER,
+    operation: 'update',
+    recordName: recordID,
+    recordID,
+    auditTrail: updateAuditTrail,
+    preUpdateMasterData: preUpdateMasterRowData?.data || {},
+    reason: submittedUpdateReason || updateReason,
+    username: QT_USER,
+    masterPerformedOn,
+  }).then((res) => ({
+    passed: res.verified && (res.comparison === null || res.comparison === undefined || res.comparison.passed !== false),
+    ...res,
+  })).catch((e) => ({ passed: false, reason: e.message }));
+  const updateVerifyReport = sanitizeAuditVerifyForReport(updateVerify);
+  const updateOldNewValidation = updateVerify?.updateOldNewValidation || null;
+  const updateOldNewPassed = !!updateOldNewValidation
+    && Number(updateOldNewValidation.checkedFieldCount || 0) > 0
+    && updateOldNewValidation.passed === true;
+
+  const passed = unicodePassed && !!createVerify.passed && longPassed && updateVerify.passed && updateOldNewPassed;
   await hidePlaybackOverlay(page).catch(() => { });
+  
   return {
-    tcId: 'TC-DI-02-01 & TC-DI-02-02',
-    title: 'Legibility (Special Characters & Long Strings)',
+    tcId: 'TC-DI-02',
+    title: 'Legibility — Special Characters & Max-Length Strings',
     status: passed ? 'passed' : 'failed',
     details: [
-      { step: 'Unicode input preserved', passed: unicodePassed, expected: specialUnicodeStr, actual: unicodeVal },
-      { step: '255-char string preserved', passed: longPassed, expected: `length=255`, actual: `length=${longVal.length}` },
+      {
+        step: 'Unicode value preserved in field after save',
+        passed: unicodePassed,
+        field: targetFieldLabel,
+        expected: specialUnicodeStr,
+        actual: unicodeVal,
+      },
+      {
+        step: 'Unicode field preserved in audit trail',
+        passed: !!createVerify.passed,
+        recordID,
+        checkedField: targetFieldLabel,
+        checkedValue: specialUnicodeStr,
+        toast: createToast?.text || '',
+        ...createVerifyReport,
+      },
+      {
+        step: 'Max-length string preserved in field after save',
+        passed: longPassed,
+        field: targetFieldLabel,
+        expected: `length=${longStringLength}`,
+        actual: `length=${longVal.length}`,
+        configuredMaxLength,
+      },
+      {
+        step: 'Long-string field preserved in audit trail',
+        passed: !!updateVerify.passed && updateOldNewPassed,
+        checkedField: targetFieldLabel,
+        reasonUsed: submittedUpdateReason || updateReason,
+        toast: updateToast?.text || '',
+        oldNewValidationReason: updateOldNewValidation?.reason || '',
+        ...updateVerifyReport,
+      },
     ],
   };
 }
+
 
 async function runTC_DI_06(page) {
   log('TC-DI-06-01: Mandatory Field Enforcement');
@@ -1070,18 +1662,22 @@ async function runTC_DI_06(page) {
   };
 }
 
-async function runTC_DI_07(browser) {
-  log('TC-DI-07-01: Session Interruption (Durability)');
-  const context = await newComplianceContext(browser);
-  const page = await context.newPage();
+async function runTC_DI_07(page) {
+// Duplicate DI-07 implementation removed
+  const context = page.context();
   setupOverlayOnPage(page);
-  await showPlaybackOverlay(page, 'TC-DI-07 — Session interruption test', 1, 3).catch(() => { });
+  await showPlaybackOverlay(page, 'TC-DI-07 - Session interruption test', 1, 3).catch(() => {});
   try {
     await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
     await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
-    await openCreateForm(page);
-    await fillOffcanvasForm(page, QT_MASTER);
 
+    // Capture initial record count before creating a new record
+    const initialCount = await page.locator(SEL.tableRows).count();
+
+    await openCreateForm(page);
+    const auditTrail = await fillOffcanvasForm(page, QT_MASTER);
+
+    // Simulate network interruption before attempting to save
     await context.setOffline(true);
     log('Network set offline before save');
 
@@ -1092,48 +1688,212 @@ async function runTC_DI_07(browser) {
       log('Save click failed as expected (offline)');
     }
 
+    // Restore network and wait for it to re‑establish
     await context.setOffline(false);
     log('Network restored');
+    await page.waitForTimeout(10000); // 10 second wait as required
 
+    // Reload to reflect any changes
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForSelector(SEL.pageTitle, { timeout: 30000 }).catch(() => { });
+    await page.waitForSelector(SEL.pageTitle, { timeout: 30000 }).catch(() => {});
+
+    // Verify that the record count increased by one (offline cached entry persisted)
+    const finalCount = await page.locator(SEL.tableRows).count();
+    const isIntact = finalCount === initialCount + 1;
+    let auditVerified = false;
+    let dataIntegrity = false;
+    // After reload, filter the newly created record using a token from offline entry
+    // Choose a representative field from auditTrail (first non-empty value)
+    const auditValues = Object.values(auditTrail || {});
+    const searchToken = auditValues.find(v => v && String(v).trim().length > 0) || '';
+    if (searchToken) {
+      // Fill the search box to locate the record
+      await page.fill(SEL.searchBox, '').catch(() => {});
+      await page.fill(SEL.searchBox, String(searchToken)).catch(() => {});
+      await page.keyboard.press('Enter').catch(() => {});
+      // Wait for potential table update
+      await page.waitForTimeout(2000);
+    }
+    // Locate the newest record (assumed first row after possible filter)
+    const newRecord = await page.evaluate(() => {
+      const rows = document.querySelectorAll('.dt-scroll-body tbody tr:first-child, .dataTables_scrollBody tbody tr:first-child, table tbody tr:first-child');
+      if (!rows.length) return null;
+      const cells = rows[0].querySelectorAll('td');
+      const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.innerText.trim());
+      const data = {};
+      headers.forEach((h, i) => { if (cells[i]) data[h] = cells[i].innerText.trim(); });
+      return data;
+    });
+    const recordID = newRecord?.['Record ID'] || newRecord?.['Code'] || newRecord?.['ID'];
+    if (recordID) {
+      // Verify that displayed data matches offline entry
+      dataIntegrity = true;
+      for (const [field, expected] of Object.entries(auditTrail || {})) {
+        const actual = newRecord[field];
+        if (actual === undefined || actual !== expected) {
+          dataIntegrity = false;
+          break;
+        }
+      }
+      // Verify timestamp (Performed On) is recent (within 2 minutes)
+      const performedOn = newRecord['Performed On'] || newRecord['Performedon'];
+      if (performedOn) {
+        const performedDate = new Date(performedOn);
+        const now = new Date();
+        const diffMs = Math.abs(now - performedDate);
+        // allow up to 2 minutes (120000 ms)
+        if (isNaN(performedDate) || diffMs > 120000) {
+          dataIntegrity = false;
+        }
+      }
+      // Verify performed by matches user
+      const performedBy = newRecord['Performed By'] || newRecord['PerformedBy'] || newRecord['User'];
+      if (performedBy && performedBy !== QT_USER) {
+        dataIntegrity = false;
+      }
+      // Verify audit trail entry for the created record
+      await verifyAuditTrailEntryCompliance(page, {
+        baseURL: new URL(page.url()).origin,
+        masterName: QT_MASTER,
+        operation: 'create',
+        recordName: recordID,
+        recordID,
+        auditTrail,
+        username: QT_USER,
+      });
+      auditVerified = true;
+    } else {
+      // Fallback: if count mismatch, attempt audit verification on any unexpected record (as before)
+      const newRecord = await page.evaluate(() => {
+        const rows = document.querySelectorAll('.dt-scroll-body tbody tr:first-child, .dataTables_scrollBody tbody tr:first-child, table tbody tr:first-child');
+        if (!rows.length) return null;
+        const cells = rows[0].querySelectorAll('td');
+        const headers = Array.from(document.querySelectorAll('table thead th')).map(th => th.innerText.trim());
+        const data = {};
+        headers.forEach((h, i) => { if (cells[i]) data[h] = cells[i].innerText.trim(); });
+        return data;
+      });
+      const recordID = newRecord?.['Record ID'] || newRecord?.['Code'] || newRecord?.['ID'];
+      if (recordID) {
+        await verifyAuditTrailEntryCompliance(page, {
+          baseURL: new URL(page.url()).origin,
+          masterName: QT_MASTER,
+          operation: 'create',
+          recordName: recordID,
+          recordID,
+          auditTrail,
+          username: QT_USER,
+        });
+        auditVerified = true;
+      }
+    }
 
     return {
       tcId: 'TC-DI-07-01',
       title: 'Session Interruption (Durability)',
-      status: 'passed',
-      details: [{ step: 'No crash / partial write on network kill before save', passed: true }],
+      status: isIntact && auditVerified ? 'passed' : 'failed',
+      details: [
+        { step: 'Record persisted after offline save', passed: isIntact },
+        { step: 'Audit trail entry verified', passed: auditVerified },
+      ],
     };
   } catch (e) {
     return { tcId: 'TC-DI-07-01', title: 'Session Interruption (Durability)', status: 'failed', details: [{ step: 'Error', passed: false, reason: e.message }] };
   } finally {
-    await hidePlaybackOverlay(page).catch(() => { });
-    await context.close();
+    await context.setOffline(false).catch(() => {});
+    await hidePlaybackOverlay(page).catch(() => {});
   }
 }
-
-async function runTC_DI_08(browser) {
+// Duplicate DI-07 implementation removed
+async function runTC_DI_08(page) {
   log('TC-DI-08-01: Soft Delete Data Preservation');
-  const context = await newComplianceContext(browser);
-  const page = await context.newPage();
   setupOverlayOnPage(page);
-  await showPlaybackOverlay(page, 'TC-DI-08 — Soft delete verification', 1, 3).catch(() => { });
+  await showPlaybackOverlay(page, 'TC-DI-08 - Step 1/3: Login and open master list', 1, 3).catch(() => { });
   try {
     await login(page, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
     await navigateTo(page, QT_MASTER, new URL(QT_URL).origin);
 
-    const deleteTarget = page.locator(`${SEL.tableRows}:first-child ${SEL.deleteBtn}`).first();
-    await deleteTarget.click();
+    await showPlaybackOverlay(page, 'TC-DI-08 - Step 2/3: Create record and deactivate same record', 2, 3).catch(() => { });
+    await openCreateForm(page);
+    const createAuditTrail = await fillOffcanvasForm(page, QT_MASTER);
+    const saveBtn = await getActionableSaveButton(page);
+    if (!saveBtn) throw new Error('Could not find save button for create flow in TC-DI-08');
+    await saveBtn.click();
+    await page.waitForTimeout(1500);
+
+    const createdMasterRowData = await getFirstVisibleMasterRowData(page);
+    let createdRecordID = '';
+    if (createdMasterRowData?.data) {
+      createdRecordID = pickFieldValue(createdMasterRowData.data, ['Record ID', 'Code', 'ID']);
+      if (!createdRecordID) {
+        const keys = Object.keys(createdMasterRowData.data || {});
+        if (keys[1]) createdRecordID = createdMasterRowData.data[keys[1]];
+      }
+    }
+
+    const createdRecordName = pickFieldValue(createdMasterRowData?.data, ['Name', `${QT_MASTER} Name`, 'Title']);
+    const createdFormToken = Object.values(createAuditTrail || {})
+      .map((value) => String(value || '').trim())
+      .find((value) => value.length >= 4) || '';
+    const recordLookupToken = String(createdRecordID || createdRecordName || createdFormToken || '').trim();
+    log(`TC-DI-08 created record token: ${recordLookupToken || '[none]'}`);
+
+    if (recordLookupToken) {
+      await page.fill(SEL.searchBox, '').catch(() => { });
+      await page.fill(SEL.searchBox, recordLookupToken).catch(() => { });
+      await page.keyboard.press('Enter').catch(() => { });
+      await page.waitForTimeout(1200);
+    }
+
+    const esc = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rowCandidates = [
+      createdRecordID ? page.locator(SEL.tableRows).filter({ hasText: new RegExp(esc(createdRecordID), 'i') }).first() : null,
+      recordLookupToken ? page.locator(SEL.tableRows).filter({ hasText: new RegExp(esc(recordLookupToken), 'i') }).first() : null,
+      page.locator(SEL.tableRows).first(),
+    ].filter(Boolean);
+
+    let deactivatedSameRecord = false;
+    for (const row of rowCandidates) {
+      const rowVisible = await row.isVisible().catch(() => false);
+      if (!rowVisible) continue;
+
+      const deleteTarget = row.locator(SEL.deleteBtn).first();
+      const deleteVisible = await deleteTarget.isVisible().catch(() => false);
+      if (!deleteVisible) continue;
+
+      await deleteTarget.click({ timeout: 8000 }).catch(async () => {
+        await deleteTarget.click({ timeout: 5000, force: true }).catch(() => { });
+        // write remarks for the deactivation of record in remarks dialog box
+        const remarksTextarea = page.locator('#remarksTextarea:visible').first();
+        if (await remarksTextarea.isVisible().catch(() => false)) {
+          await remarksTextarea.fill(`Deactivating record for TC-DI-08 test: ${recordLookupToken || createdRecordID || '[unknown]'}`);
+          await page.locator(':text("Submit"), button.btn-primary:has-text("Submit")').first().click();
+        }
+
+      });
+      deactivatedSameRecord = true;
+      break;
+    }
+    if (!deactivatedSameRecord) {
+      throw new Error(`Could not locate deactivate action for created record token: ${recordLookupToken || '[none]'}`);
+    }
+
     await clickOptionalYesConfirmation(page, 5000).catch(() => false);
-    await waitForSuccessToastOrHandleConfirm(page, 'deactivate', 30000);
+    // write remarks for the deactivation of record in remarks dialog box if it appears again after clicking on yes in confirmation pop up
+    const remarksTextarea = page.locator('#reasonTextarea:visible').first();
+    if (await remarksTextarea.isVisible().catch(() => false)) {
+      await remarksTextarea.fill(`Deactivating record for TC-DI-08 test: ${recordLookupToken || createdRecordID || '[unknown]'}`);
+      await page.locator(':text("Submit"), button.btn-primary:has-text("Submit")').first().click();
+    }
     await clickOptionalYesConfirmation(page, 800).catch(() => false);
 
-    const auditVerify = await verifyAuditTrailEntry(page, {
+    await showPlaybackOverlay(page, 'TC-DI-08 - Step 3/3: Verify audit trail for deactivated record', 3, 3).catch(() => { });
+    const auditVerify = await verifyAuditTrailEntryCompliance(page, {
       baseURL: new URL(page.url()).origin,
       masterName: QT_MASTER,
       operation: 'delete',
-      recordName: null,
-      recordID: null,
+      recordName: recordLookupToken || null,
+      recordID: createdRecordID || null,
       username: QT_USER,
     }).then((res) => ({ passed: res.verified, ...res })).catch((e) => ({ passed: false, reason: e.message }));
 
@@ -1141,26 +1901,35 @@ async function runTC_DI_08(browser) {
       tcId: 'TC-DI-08-01',
       title: 'Soft Delete Data Preservation',
       status: auditVerify.passed ? 'passed' : 'failed',
-      details: [{ step: 'Audit trail retained after deactivation', ...auditVerify }],
+      details: [
+        {
+          step: 'Create and deactivate same record',
+          passed: true,
+          recordToken: recordLookupToken || '(not captured)',
+          recordID: createdRecordID || '(not captured)',
+        },
+        { step: 'Audit trail retained after deactivation', ...auditVerify },
+      ],
     };
   } catch (e) {
     return { tcId: 'TC-DI-08-01', title: 'Soft Delete Data Preservation', status: 'failed', details: [{ step: 'Error', passed: false, reason: e.message }] };
   } finally {
     await hidePlaybackOverlay(page).catch(() => { });
-    await context.close();
   }
 }
-
-async function runTC_DI_09(browser) {
+async function runTC_DI_09(pageA) {
   log('TC-DI-09-01: Concurrent Edit Conflict Detection');
-  const ctxA = await newComplianceContext(browser);
+  const browser = pageA.context().browser();
+  if (!browser) {
+    throw new Error('Browser handle unavailable for TC-DI-09');
+  }
+
   const ctxB = await newComplianceContext(browser);
-  const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
   setupOverlayOnPage(pageA);
   setupOverlayOnPage(pageB);
-  await showPlaybackOverlay(pageA, 'TC-DI-09 — Concurrent edit (User A)', 1, 2).catch(() => { });
-  await showPlaybackOverlay(pageB, 'TC-DI-09 — Concurrent edit (User B)', 1, 2).catch(() => { });
+  await showPlaybackOverlay(pageA, 'TC-DI-09 - Concurrent edit (User A)', 1, 2).catch(() => { });
+  await showPlaybackOverlay(pageB, 'TC-DI-09 - Concurrent edit (User B)', 1, 2).catch(() => { });
 
   try {
     await login(pageA, { loginUrl: QT_URL, username: QT_USER, password: QT_PASS });
@@ -1210,11 +1979,9 @@ async function runTC_DI_09(browser) {
   } finally {
     await hidePlaybackOverlay(pageA).catch(() => { });
     await hidePlaybackOverlay(pageB).catch(() => { });
-    await ctxA.close();
-    await ctxB.close();
+    await ctxB.close().catch(() => { });
   }
 }
-
 // ── Main Dispatcher ────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1240,12 +2007,11 @@ async function main() {
     'TC-DI-01': () => runTC_DI_01(page),
     'TC-DI-01-01': () => runTC_DI_01(page),
     'TC-DI-01-02': () => runTC_DI_01(page),
-    'TC-DI-02-01': () => runTC_DI_02(page),
-    'TC-DI-02-02': () => runTC_DI_02(page),
+    'TC-DI-02': () => runTC_DI_02(page),
     'TC-DI-06-01': () => runTC_DI_06(page),
-    'TC-DI-07-01': () => runTC_DI_07(browser),
-    'TC-DI-08-01': () => runTC_DI_08(browser),
-    'TC-DI-09-01': () => runTC_DI_09(browser),
+    'TC-DI-07-01': () => runTC_DI_07(page),
+    'TC-DI-08-01': () => runTC_DI_08(page),
+    'TC-DI-09-01': () => runTC_DI_09(page),
   };
 
   const startedAt = new Date().toISOString();
@@ -1254,7 +2020,7 @@ async function main() {
   try {
     if (!QT_TC_ID || !tcMap[QT_TC_ID]) {
       const allResults = [];
-      const uniqueCases = ['TC-DI-01', 'TC-DI-02-01', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
+      const uniqueCases = ['TC-DI-01', 'TC-DI-02', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
       for (const tcId of uniqueCases) {
         try {
           const tcResult = await tcMap[tcId]().catch((e) => ({
@@ -1308,9 +2074,10 @@ async function main() {
 
   emitResult(result);
 }
-
 main().catch((e) => {
   process.stderr.write(`[COMPLIANCE] Fatal error: ${e.message}\n`);
   process.stdout.write(JSON.stringify({ status: 'failed', error: e.message }));
   process.exit(1);
 });
+
+

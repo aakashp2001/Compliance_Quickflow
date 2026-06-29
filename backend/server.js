@@ -3,6 +3,10 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { execFile, spawn } = require('child_process');
+const dotenv = require('dotenv');
+const storage = require('./db/storage');
+
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -11,35 +15,24 @@ app.use(cors());
 app.use(express.json());
 
 const items = [];
-const masterFieldsDataPath = path.resolve(__dirname, 'data', 'master-fields.json');
+const testReportArtifactsDir = path.resolve(__dirname, '..', 'playwright-tests', 'test-reports');
+
+function logStorageError(scope, error) {
+  const message = String(error?.message || error || 'unknown storage error');
+  console.error(`[storage:${scope}] ${message}`);
+}
 
 function readMasterFields() {
-  try {
-    if (!fs.existsSync(masterFieldsDataPath)) return new Map();
-    const raw = fs.readFileSync(masterFieldsDataPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return new Map(Object.entries(parsed));
-  } catch {
-    return new Map();
-  }
+  return storage.getMasterFieldsMap();
 }
 
 function writeMasterFields(cacheMap) {
-  ensureDir(path.dirname(masterFieldsDataPath));
-  const obj = Object.fromEntries(cacheMap);
-  fs.writeFileSync(masterFieldsDataPath, `${JSON.stringify(obj, null, 2)}\n`, 'utf-8');
+  storage.setMasterFieldsMap(cacheMap).catch((error) => {
+    logStorageError('master-fields', error);
+  });
 }
 
-const masterFieldsCache = readMasterFields();
-// Ensure the cache file exists on startup so frontend can reload from disk-backed JSON.
-writeMasterFields(masterFieldsCache);
-const dependencyConfigPath = path.resolve(__dirname, '..', 'playwright-tests', 'helpers', 'dependent-dropdowns.json');
-const testReportArtifactsDir = path.resolve(__dirname, '..', 'playwright-tests', 'test-reports');
-const testReportsDataPath = path.resolve(__dirname, 'data', 'test-reports.json');
-const complianceRunsDataPath = path.resolve(__dirname, 'data', 'compliance-runs.json');
-const recordingsDataPath = path.resolve(__dirname, 'data', 'recordings.json');
-const mastersDataPath = path.resolve(__dirname, 'data', 'masters.json');
-const templateWorkflowFlowStatePath = path.resolve(__dirname, '..', 'playwright-tests', '.template-workflow-flow.json');
+const masterFieldsCache = new Map();
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -48,86 +41,52 @@ function ensureDir(dirPath) {
 }
 
 function readTestReports() {
-  try {
-    if (!fs.existsSync(testReportsDataPath)) return [];
-    const raw = fs.readFileSync(testReportsDataPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return storage.getTestReports();
 }
 
 function writeTestReports(entries) {
-  ensureDir(path.dirname(testReportsDataPath));
-  fs.writeFileSync(testReportsDataPath, `${JSON.stringify(entries, null, 2)}\n`, 'utf-8');
+  // No-op: entries are managed through append semantics for this code path.
+  return entries;
 }
 
 function appendTestReport(entry) {
-  const existing = readTestReports();
-  existing.unshift(entry);
-  writeTestReports(existing.slice(0, 500));
+  storage.appendTestReport(entry).catch((error) => {
+    logStorageError('append-test-report', error);
+  });
 }
 
 function readComplianceRunsStore() {
-  try {
-    if (!fs.existsSync(complianceRunsDataPath)) return { runsById: {} };
-    const raw = fs.readFileSync(complianceRunsDataPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    const runsById = parsed && typeof parsed === 'object' && parsed.runsById && typeof parsed.runsById === 'object'
-      ? parsed.runsById
-      : {};
-    return { runsById };
-  } catch {
-    return { runsById: {} };
-  }
+  return storage.getComplianceRunsStore();
 }
 
 function writeComplianceRunsStore(store) {
-  ensureDir(path.dirname(complianceRunsDataPath));
-  fs.writeFileSync(complianceRunsDataPath, `${JSON.stringify(store, null, 2)}\n`, 'utf-8');
+  storage.setComplianceRunsStore(store).catch((error) => {
+    logStorageError('compliance-runs', error);
+  });
 }
 
 function readRecordingsIndex() {
-  try {
-    if (!fs.existsSync(recordingsDataPath)) return [];
-    const raw = fs.readFileSync(recordingsDataPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return storage.getRecordingsIndex();
 }
 
 function writeRecordingsIndex(entries) {
-  ensureDir(path.dirname(recordingsDataPath));
-  fs.writeFileSync(recordingsDataPath, `${JSON.stringify(entries, null, 2)}\n`, 'utf-8');
+  storage.setRecordingsIndex(entries).catch((error) => {
+    logStorageError('recordings', error);
+  });
 }
 
 function readMasters() {
-  try {
-    if (!fs.existsSync(mastersDataPath)) return { masters: [], fetchedAt: null };
-    const raw = fs.readFileSync(mastersDataPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return {
-      masters: Array.isArray(parsed?.masters) ? parsed.masters : [],
-      fetchedAt: parsed?.fetchedAt || null,
-    };
-  } catch {
-    return { masters: [], fetchedAt: null };
-  }
+  return storage.getMastersCache();
 }
 
 function writeMasters(masters, fetchedAt) {
-  ensureDir(path.dirname(mastersDataPath));
-  const payload = { masters, fetchedAt: fetchedAt || new Date().toISOString() };
-  fs.writeFileSync(mastersDataPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  storage.setMastersCache(masters, fetchedAt).catch((error) => {
+    logStorageError('masters', error);
+  });
 }
 
-// Initialize masters cache from file
-const initialMasters = readMasters();
-let mastersCache = initialMasters.masters;
-let mastersFetchedAt = initialMasters.fetchedAt;
+let mastersCache = [];
+let mastersFetchedAt = null;
 
 function normalizeFieldCacheEntry(entry, fallbackFetchedAt = null) {
   const fields = Array.isArray(entry?.fields) ? entry.fields : [];
@@ -255,7 +214,9 @@ function collapseRecordingVariants(files, index) {
 
 function buildRecordingTitle(meta) {
   if (meta.kind === 'crud') {
-    return `CRUD ${String(meta.operation || 'all').toUpperCase()} - ${meta.masterName || 'Master'}`;
+    const opLabel = String(meta.operation || 'all').toUpperCase();
+    const auditSuffix = meta.verifyAuditTrail ? ' + AUDIT TRAIL VERIFICATION' : '';
+    return `CRUD ${opLabel}${auditSuffix} - ${meta.masterName || 'Master'}`;
   }
   if (meta.kind === 'mandatory') {
     return `Mandatory Fields - ${meta.masterName || 'Master'}`;
@@ -355,9 +316,9 @@ async function finalizeRecordingCapture(capture, meta = {}) {
       discardedEntries = newEntries.filter((entry) => entry.name !== preferredEntry.name);
       newEntries = [preferredEntry];
     } else if (newEntries.length > 1) {
-      const chosen = newEntries.reduce((largest, entry) => (
-        (entry.sizeBytes || 0) > (largest.sizeBytes || 0) ? entry : largest
-      ));
+      // Prefer the oldest (first created) video when no primary is specified,
+      // as the main page video is typically created before any popups.
+      const chosen = newEntries[0];
       discardedEntries = newEntries.filter((entry) => entry.name !== chosen.name);
       newEntries = [chosen];
     }
@@ -444,7 +405,7 @@ async function finalizeRecordingCapture(capture, meta = {}) {
   }
 
   const filteredExisting = existingIndex.filter((item) => !saved.some((record) => record.name === item.name));
-  writeRecordingsIndex([...saved.reverse(), ...filteredExisting].slice(0, 500));
+  writeRecordingsIndex([...saved.reverse(), ...filteredExisting]);
   return saved;
 }
 
@@ -465,16 +426,7 @@ ensureDir(testReportArtifactsDir);
 app.use('/test-report-artifacts', express.static(testReportArtifactsDir));
 
 function readDependencyConfig() {
-  try {
-    if (!fs.existsSync(dependencyConfigPath)) {
-      return {};
-    }
-    const raw = fs.readFileSync(dependencyConfigPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
+  return storage.getDependencyConfig();
 }
 
 function normalizeUniqueStringList(values) {
@@ -488,11 +440,9 @@ function normalizeUniqueStringList(values) {
 }
 
 function writeDependencyConfig(config) {
-  const dir = path.dirname(dependencyConfigPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(dependencyConfigPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+  storage.setDependencyConfig(config).catch((error) => {
+    logStorageError('dependency-config', error);
+  });
 }
 
 function getMasterDependencyEntry(config, masterName) {
@@ -721,13 +671,14 @@ app.get('/api/recordings', (req, res) => {
 });
 
 // ─── Save CRUD results from frontend ──────────────────────────────────────────
-const crudResultsPath = path.resolve(__dirname, 'data', 'crud-results.json');
 
 app.post('/api/save-results', (req, res) => {
   try {
     const results = Array.isArray(req.body?.results) ? req.body.results : [];
     const payload = { results, savedAt: new Date().toISOString() };
-    fs.writeFileSync(crudResultsPath, JSON.stringify(payload, null, 2), 'utf8');
+    storage.setCrudResults(payload).catch((error) => {
+      logStorageError('crud-results', error);
+    });
     return res.json({ ok: true, count: results.length });
   } catch (err) {
     return res.status(500).json({ message: err.message || 'Failed to save results' });
@@ -736,8 +687,7 @@ app.post('/api/save-results', (req, res) => {
 
 app.get('/api/saved-results', (req, res) => {
   try {
-    if (!fs.existsSync(crudResultsPath)) return res.json({ results: [], savedAt: null });
-    const data = JSON.parse(fs.readFileSync(crudResultsPath, 'utf8'));
+    const data = storage.getCrudResults();
     return res.json(data);
   } catch {
     return res.json({ results: [], savedAt: null });
@@ -745,7 +695,7 @@ app.get('/api/saved-results', (req, res) => {
 });
 
 app.post('/api/masters/fetch', async (req, res) => {
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const showBrowser = req.body?.showBrowser !== false;
@@ -895,7 +845,7 @@ app.get('/api/masters/:masterName/fields', async (req, res) => {
     });
   }
 
-  const loginUrl = req.query.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.query.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.query.username || process.env.QT_USER || 'dhruvi';
   const password = req.query.password || process.env.QT_PASS || '';
   const showBrowser = String(req.query.showBrowser || 'true').toLowerCase() !== 'false';
@@ -977,7 +927,7 @@ app.get('/api/dependency-config', (req, res) => {
   if (!masterName) {
     return res.json({
       config,
-      path: dependencyConfigPath,
+      source: 'mongodb:dependency_configs',
     });
   }
 
@@ -1063,7 +1013,7 @@ app.post('/api/masters/compare-field', async (req, res) => {
   if (!sourceMaster) return res.status(400).json({ message: 'sourceMaster is required' });
   if (!targetMaster) return res.status(400).json({ message: 'targetMaster is required' });
 
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const showBrowser = req.body?.showBrowser !== false;
@@ -1313,6 +1263,15 @@ function buildArtifactUrl(req, fileName) {
   return name ? `${req.protocol}://${req.get('host')}/test-report-artifacts/${encodeURIComponent(name)}` : '';
 }
 
+function buildArtifactUrlFromRequest(req, fileName) {
+  const name = String(fileName || '').trim();
+  if (!name) return '';
+  if (req?.protocol && typeof req.get === 'function') {
+    return buildArtifactUrl(req, name);
+  }
+  return `/test-report-artifacts/${encodeURIComponent(name)}`;
+}
+
 function getLatestWorkflowScreenshot(jsonResult) {
   const steps = jsonResult?.steps && typeof jsonResult.steps === 'object' ? jsonResult.steps : {};
   const failedStep = Object.values(steps).find((step) => step?.status === 'failed' && (step?.screenshotFile || step?.screenshotPath));
@@ -1391,7 +1350,7 @@ function buildTemplateWorkflowReason(passed, jsonResult) {
 }
 
 app.post('/api/templates/create-entry', async (req, res) => {
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const showBrowser = req.body?.showBrowser !== false;
@@ -1662,7 +1621,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
     return res.status(400).json({ message: 'operation must be create, update, delete, all, or duplicate-check' });
   }
 
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const showBrowser = req.body?.showBrowser !== false;
@@ -1670,6 +1629,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
   const incomingPrefilledValues = req.body?.prefilledValues && typeof req.body.prefilledValues === 'object'
     ? req.body.prefilledValues
     : null;
+  const incomingTargetRecord = String(req.body?.targetRecordName || '').trim();
   const recordingCapture = beginRecordingCapture();
 
   try {
@@ -1683,6 +1643,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
       QT_HEADLESS: showBrowser ? 'false' : 'true',
       QT_VERIFY_AUDIT: verifyAuditTrail ? 'true' : 'false',
       QT_PREFILLED_VALUES: incomingPrefilledValues ? JSON.stringify(incomingPrefilledValues) : '',
+      ...(incomingTargetRecord ? { QT_TARGET_RECORD: incomingTargetRecord } : {}),
     });
 
     result.recordings = await finalizeRecordingCaptureSafe(recordingCapture, {
@@ -1691,7 +1652,8 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
       operation,
       verifyAuditTrail,
       status: 'completed',
-      keepPrimaryOnly: !verifyAuditTrail,
+      keepPrimaryOnly: true,
+      primaryVideoName: result.primaryVideoName || '',
     });
 
     const runLogs = trimReportText(result?._debug || '');
@@ -1779,12 +1741,13 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
             : 'passed',
           reason: opName === 'duplicate-check'
             ? (duplicateBlocked
-              ? 'Duplicate check blocked the duplicate entry successfully'
+              ? ''
               : 'Duplicate check ran but the duplicate entry was not blocked')
-            : `${formatOperation(opName)} operation completed successfully`,
+            : '',
           logs: runLogs,
           screenshotUrl: opScreenshot.screenshotUrl,
           screenshotFile: opScreenshot.fileName,
+          screenshotStep: op.screenshotStep || '',
           error: '',
           recordName: op.recordName || '',
           fieldCount: op.fieldCount || 0,
@@ -1800,10 +1763,11 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
             masterName,
             operation: 'audit-verified',
             status: 'passed',
-            reason: `Audit trail verified successfully for ${formatOperation(opName).toLowerCase()} operation`,
+            reason: '',
             logs: runLogs,
             screenshotUrl: auditScreenshot.screenshotUrl,
             screenshotFile: auditScreenshot.fileName,
+            screenshotStep: 'audit-verified',
             error: '',
             recordName: op.recordName || '',
             verifiedOperation: opName,
@@ -1861,6 +1825,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
           logs: runLogs || trimReportText(errorText),
           screenshotUrl,
           screenshotFile: fileName,
+          screenshotStep: failure.screenshotStep || '',
           error: errorText,
           createdAt: failure.createdAt || new Date().toISOString(),
         });
@@ -1879,7 +1844,7 @@ app.post('/api/masters/:masterName/crud', async (req, res) => {
       operation,
       verifyAuditTrail,
       status: 'failed',
-      keepPrimaryOnly: !verifyAuditTrail,
+      keepPrimaryOnly: true,
     });
     const message = error?.message || 'CRUD operation failed';
     const markerPath = extractFailureScreenshotPath(message);
@@ -1948,7 +1913,7 @@ app.post('/api/masters/:masterName/validate-mandatory', async (req, res) => {
     return res.status(400).json({ message: 'masterName is required' });
   }
 
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const showBrowser = req.body?.showBrowser !== false;
@@ -2027,7 +1992,25 @@ app.post('/api/masters/:masterName/validate-mandatory', async (req, res) => {
 app.post('/api/template-workflow/run', async (req, res) => {
   const showBrowser     = req.body?.showBrowser !== false;
   const resumeFromStep  = req.body?.resumeFromStep  || '';        // e.g. 'assignWorkflow'
-  const prefilledState  = req.body?.prefilledFlowState || null;   // { siteName, appName, … }
+  let prefilledState    = req.body?.prefilledFlowState || null;   // { siteName, appName, … }
+
+  // Auto-hydrate prefilledState from DB when resuming without explicit state.
+  // Prefer lastPassed (known-good entities), fall back to lastRun.
+  if (resumeFromStep && (!prefilledState || typeof prefilledState !== 'object' || Object.keys(prefilledState).length === 0)) {
+    try {
+      const lastPassed = storage.getTemplateWorkflowState('lastPassed');
+      const lastRun    = storage.getTemplateWorkflowState('lastRun');
+      const candidate  = (lastPassed && lastPassed.flowState) || (lastRun && lastRun.flowState) || null;
+      if (candidate && (candidate.siteName || candidate.appName || candidate.templateName)) {
+        prefilledState = candidate;
+        console.log(`[TW-RESUME] Hydrated RESUME_FLOW_STATE from DB (${lastPassed?.flowState ? 'lastPassed' : 'lastRun'}): site="${candidate.siteName || ''}" app="${candidate.appName || ''}" template="${candidate.templateName || ''}"`);
+      } else {
+        console.warn('[TW-RESUME] No saved flowState found in DB for resume hydration');
+      }
+    } catch (err) {
+      console.warn('[TW-RESUME] Failed to hydrate flowState from DB:', err.message);
+    }
+  }
 
   const env = {
     ...process.env,
@@ -2091,14 +2074,26 @@ app.post('/api/template-workflow/run', async (req, res) => {
 
     // ── Persist run state for one-click Resume ────────────────────────────────
     if (jsonResult) {
-      const lastRunPath = path.resolve(__dirname, 'last-run-state.json');
       try {
-        fs.writeFileSync(lastRunPath, JSON.stringify({
+        storage.setTemplateWorkflowState('lastRun', {
           savedAt:   new Date().toISOString(),
           status:    jsonResult.status,
           flowState: jsonResult.flowState || {},
           steps:     jsonResult.steps || {},
-        }, null, 2));
+        }).catch((error) => {
+          logStorageError('template-workflow-last-run', error);
+        });
+
+        if (passed) {
+          storage.setTemplateWorkflowState('lastPassed', {
+            savedAt:   new Date().toISOString(),
+            status:    jsonResult.status,
+            flowState: jsonResult.flowState || {},
+            steps:     jsonResult.steps || {},
+          }).catch((error) => {
+            logStorageError('template-workflow-last-passed', error);
+          });
+        }
       } catch { /* non-fatal */ }
     }
 
@@ -2157,7 +2152,7 @@ app.post('/api/template-workflow/run', async (req, res) => {
 
 function normalizeComplianceSuite(value) {
   const normalized = String(value || '').trim().toUpperCase();
-  if (normalized === 'MD' || normalized === 'AT') return normalized;
+  if (normalized === 'MD' || normalized === 'AT' || normalized === 'EH' || normalized === 'AC' || normalized === 'PR') return normalized;
   return 'DI';
 }
 
@@ -2167,6 +2162,12 @@ function runComplianceScript(env, suite = 'DI') {
     ? 'master-data-runner.js'
     : normalizedSuite === 'AT'
       ? 'audit-trail-runner.js'
+      : normalizedSuite === 'EH'
+        ? 'error-handling-runner.js'
+        : normalizedSuite === 'AC'
+          ? 'access-control-runner.js'
+        : normalizedSuite === 'PR'
+          ? 'performance-reliability-runner.js'
       : 'compliance-runner.js';
   const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'compliance', runnerFile);
   const cwd = path.resolve(__dirname, '..', 'playwright-tests');
@@ -2204,9 +2205,260 @@ function runComplianceScript(env, suite = 'DI') {
   });
 }
 
+function stringifyComplianceDetailValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncateComplianceText(value, max = 8000) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+}
+
+function collectComplianceFailedFields(detail) {
+  const fields = [];
+  const directFailed = Array.isArray(detail?.failedFields) ? detail.failedFields : [];
+  const summaryFailed = Array.isArray(detail?.fieldValidationSummary?.failedFields)
+    ? detail.fieldValidationSummary.failedFields
+    : [];
+  const oldNewFailed = Array.isArray(detail?.updateOldNewValidation?.failedFields)
+    ? detail.updateOldNewValidation.failedFields
+    : [];
+
+  [...directFailed, ...summaryFailed, ...oldNewFailed].forEach((fieldName) => {
+    const text = String(fieldName || '').trim();
+    if (text) fields.push(text);
+  });
+
+  return Array.from(new Set(fields));
+}
+
+function extractComplianceDetailReason(detail) {
+  const explicitReason = truncateComplianceText(
+    stringifyComplianceDetailValue(detail?.reason || detail?.error || detail?.message),
+    8000
+  );
+  if (explicitReason) return explicitReason;
+
+  const failedFields = collectComplianceFailedFields(detail);
+  if (failedFields.length) {
+    return truncateComplianceText(`Failed fields: ${failedFields.join(', ')}`, 8000);
+  }
+
+  const masterPerformedBy = truncateComplianceText(stringifyComplianceDetailValue(detail?.actualMasterPerformedBy), 1200);
+  const auditPerformedBy = truncateComplianceText(stringifyComplianceDetailValue(detail?.actualAuditPerformedBy), 1200);
+  if (masterPerformedBy && auditPerformedBy && detail?.passed === false) {
+    return `Performed-by mismatch (master: ${masterPerformedBy}, audit: ${auditPerformedBy})`;
+  }
+
+  const expected = truncateComplianceText(stringifyComplianceDetailValue(detail?.expected), 1200);
+  const actual = truncateComplianceText(stringifyComplianceDetailValue(detail?.actual), 1200);
+  if (expected && actual && expected !== actual) {
+    return `Expected ${expected}, actual ${actual}`;
+  }
+
+  return '';
+}
+
+function buildComplianceStepResults(details) {
+  const source = Array.isArray(details) ? details : [];
+  return source.map((detail, index) => {
+    const step = truncateComplianceText(
+      stringifyComplianceDetailValue(detail?.step || detail?.name || `Step ${index + 1}`),
+      1200
+    ) || `Step ${index + 1}`;
+    const passed = detail?.passed === true;
+    const expected = truncateComplianceText(stringifyComplianceDetailValue(detail?.expected), 3000);
+    const actual = truncateComplianceText(stringifyComplianceDetailValue(detail?.actual), 3000);
+    const reason = truncateComplianceText(extractComplianceDetailReason(detail), 8000);
+    const infoParts = [];
+
+    if (expected && actual) {
+      infoParts.push(`Expected: ${expected}`);
+      infoParts.push(`Actual: ${actual}`);
+    } else if (actual) {
+      infoParts.push(`Actual: ${actual}`);
+    } else if (expected) {
+      infoParts.push(`Expected: ${expected}`);
+    }
+
+    const reasonDuplicatesActual = actual && reason === `Actual: ${actual}`;
+    const reasonDuplicatesExpectedActual = expected && actual && reason === `Expected ${expected}, actual ${actual}`;
+    if (reason && !reasonDuplicatesActual && !reasonDuplicatesExpectedActual) {
+      infoParts.push(`Reason: ${reason}`);
+    }
+
+    if (!infoParts.length) {
+      const sourceLabel = truncateComplianceText(stringifyComplianceDetailValue(detail?.source), 1200);
+      const evidenceLabel = truncateComplianceText(stringifyComplianceDetailValue(detail?.evidence), 3000);
+      if (sourceLabel) infoParts.push(`Source: ${sourceLabel}`);
+      if (evidenceLabel) infoParts.push(`Evidence: ${evidenceLabel}`);
+    }
+
+    return {
+      step,
+      passed,
+      result: passed ? 'PASSED' : 'FAILED',
+      info: infoParts.join(' | '),
+      expected,
+      actual,
+      reason,
+    };
+  });
+}
+
+function buildComplianceReportReason({ status, title, tcId, stepResults, errorText = '' }) {
+  const normalizedStatus = normalizeRealtimeComplianceStatus(status);
+  const label = String(title || tcId || 'Compliance test').trim() || 'Compliance test';
+
+  if (normalizedStatus === 'passed') return `${label} passed`;
+  if (normalizedStatus === 'blocked') return `${label} blocked`;
+  if (normalizedStatus === 'not-performed') return `${label} not performed`;
+
+  const failedSteps = (Array.isArray(stepResults) ? stepResults : []).filter((item) => item?.passed === false);
+  if (failedSteps.length) {
+    const messages = failedSteps.map((failedStep) => {
+      const detail = String(failedStep?.reason || failedStep?.info || '').trim();
+      return detail
+        ? `${failedStep.step}: ${detail}`
+        : `${failedStep.step} failed`;
+    });
+    return truncateComplianceText(messages.join(' || '), 8000);
+  }
+
+  return truncateComplianceText(buildReasonFromFailureText(errorText, `${label} failed`), 8000);
+}
+
+function buildComplianceReportLogs({ stepResults, debugLog, details, executionTraceability }) {
+  const lines = [];
+  const rows = Array.isArray(stepResults) ? stepResults : [];
+
+  if (rows.length) {
+    lines.push('[Compliance Step Results]');
+    rows.forEach((row) => {
+      lines.push(`${row.result}: ${row.step}${row.info ? ` | ${row.info}` : ''}`);
+    });
+  }
+
+  const debugText = String(debugLog || '').trim();
+  if (debugText) {
+    if (lines.length) lines.push('');
+    lines.push('[Runner Logs]');
+    lines.push(debugText);
+  }
+
+  const traceability = executionTraceability && typeof executionTraceability === 'object'
+    ? executionTraceability
+    : null;
+  if (traceability) {
+    if (lines.length) lines.push('');
+    lines.push('[Execution Traceability JSON]');
+    lines.push(JSON.stringify(traceability, null, 2));
+  }
+
+  const rawDetails = Array.isArray(details) ? details : [];
+  if (rawDetails.length) {
+    if (lines.length) lines.push('');
+    lines.push('[Raw Detail JSON]');
+    const rawDetailsPayload = traceability
+      ? {
+        executionTraceability: traceability,
+        details: rawDetails,
+      }
+      : rawDetails;
+    lines.push(JSON.stringify(rawDetailsPayload, null, 2));
+  }
+
+  return trimReportText(lines.join('\n').trim());
+}
+
+function extractArtifactFileName(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    return path.basename(decodeURIComponent(parsed.pathname || ''));
+  } catch {
+    return path.basename(raw);
+  }
+}
+
+function collectComplianceScreenshotRefs(source, refs = []) {
+  if (!source) return refs;
+
+  if (Array.isArray(source)) {
+    source.forEach((item) => collectComplianceScreenshotRefs(item, refs));
+    return refs;
+  }
+
+  if (typeof source !== 'object') return refs;
+
+  const directKeys = ['screenshotFile', 'screenshotPath', 'screenshotUrl'];
+  for (const key of directKeys) {
+    const fileName = extractArtifactFileName(source[key]);
+    if (fileName) {
+      refs.push({
+        fileName,
+        step: String(source?.screenshotStep || source?.step || source?.name || '').trim(),
+      });
+    }
+  }
+
+  for (const value of Object.values(source)) {
+    if (value && typeof value === 'object') {
+      collectComplianceScreenshotRefs(value, refs);
+    }
+  }
+
+  return refs;
+}
+
+function findComplianceScreenshotRef(result = {}, errorText = '') {
+  const refs = collectComplianceScreenshotRefs(result);
+  if (refs.length) return refs[refs.length - 1];
+
+  const markerMatch = String(errorText || '').match(/\[FAIL_SCREENSHOT\]\s*([^\r\n]+)/i);
+  const markerFile = extractArtifactFileName(markerMatch?.[1] || '');
+  return markerFile ? { fileName: markerFile, step: 'failure' } : { fileName: '', step: '' };
+}
+
+function buildComplianceRecordingRef(req, recordings = []) {
+  const list = Array.isArray(recordings) ? recordings : [];
+  const primary = list.find((item) => item?.name) || null;
+  const fileName = primary?.name ? path.basename(String(primary.name)) : '';
+
+  return {
+    recordingFile: fileName,
+    recordingUrl: buildArtifactUrlFromRequest(req, fileName),
+    recordingId: primary?.id || '',
+  };
+}
+
+function buildComplianceReportArtifacts(req, result = {}, errorText = '') {
+  const screenshotRef = findComplianceScreenshotRef(result, errorText);
+  const screenshotFile = screenshotRef.fileName || '';
+  const recordingRef = buildComplianceRecordingRef(req, result?.recordings || []);
+
+  return {
+    screenshotFile,
+    screenshotUrl: buildArtifactUrlFromRequest(req, screenshotFile),
+    screenshotStep: screenshotRef.step || '',
+    ...recordingRef,
+  };
+}
+
 app.post('/api/compliance/run', async (req, res) => {
   const suite = normalizeComplianceSuite(req.body?.suite || process.env.QT_SUITE || 'DI');
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const username2 = req.body?.username2 || process.env.QT_USER2 || username;
@@ -2236,40 +2488,60 @@ app.post('/api/compliance/run', async (req, res) => {
       ? Number(result?.summary?.failed || 0) === 0
       : result?.status !== 'failed';
 
+    const savedRecordings = await finalizeRecordingCaptureSafe(recordingCapture, {
+      kind: 'compliance',
+      masterName: String(masterName),
+      operation: `${suite.toLowerCase()}-${tcId || 'all'}`,
+      status: overallPassed ? 'completed' : 'failed',
+    });
+    result.recordings = savedRecordings;
+
     const reportResults = result?.mode === 'all' ? (result?.results || []) : [result];
     for (const r of reportResults) {
       const normalizedStatus = String(r?.status || '').toLowerCase() === 'blocked'
         ? 'blocked'
         : (String(r?.status || '').toLowerCase() === 'passed' ? 'passed' : 'failed');
+      const complianceStepResults = buildComplianceStepResults(r?.details || []);
+      const reportReason = buildComplianceReportReason({
+        status: normalizedStatus,
+        title: r?.title,
+        tcId: r?.tcId || tcId,
+        stepResults: complianceStepResults,
+        errorText: r?.error || r?._debug || '',
+      });
+      const reportLogs = buildComplianceReportLogs({
+        stepResults: complianceStepResults,
+        debugLog: r?._debug || '',
+        details: r?.details || [],
+        executionTraceability: r?.executionTraceability || result?.executionTraceability || null,
+      });
+      const shouldCaptureError = normalizedStatus === 'failed';
+      const artifacts = buildComplianceReportArtifacts(req, {
+        ...r,
+        recordings: savedRecordings,
+      }, r?.error || reportReason || '');
 
       appendTestReport({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         masterName: String(masterName),
         operation: `compliance-${suite.toLowerCase()}-${String(r?.tcId || tcId || 'all').toLowerCase().replace(/\s+/g, '-')}`,
         status: normalizedStatus,
-        reason: normalizedStatus === 'passed'
-          ? `${r?.title || r?.tcId || 'Compliance test'} passed`
-          : normalizedStatus === 'blocked'
-            ? `${r?.title || r?.tcId || 'Compliance test'} blocked`
-            : `${r?.title || r?.tcId || 'Compliance test'} failed`,
-        logs: trimReportText(`${r?._debug || ''}\n\n${JSON.stringify(r?.details || {}, null, 2)}`),
-        screenshotUrl: '',
-        screenshotFile: '',
-        error: normalizedStatus !== 'passed' ? trimReportText(JSON.stringify(r?.details || '', null, 2)) : '',
+        reason: reportReason,
+        logs: reportLogs,
+        complianceStepResults,
+        complianceDetails: Array.isArray(r?.details) ? r.details : [],
+        executionTraceability: r?.executionTraceability || result?.executionTraceability || null,
+        ...artifacts,
+        error: shouldCaptureError
+          ? trimReportText(String(r?.error || reportReason || JSON.stringify(r?.details || '', null, 2)))
+          : '',
         createdAt: new Date().toISOString(),
       });
     }
 
-    result.recordings = await finalizeRecordingCaptureSafe(recordingCapture, {
-      kind: 'compliance',
-      masterName: String(masterName),
-      operation: `${suite.toLowerCase()}-${tcId || 'all'}`,
-      status: overallPassed ? 'completed' : 'failed',
-    });
-
     return res.json(result);
   } catch (error) {
-    await finalizeRecordingCaptureSafe(recordingCapture, {
+    const savedRecordings = await finalizeRecordingCaptureSafe(recordingCapture, {
       kind: 'compliance',
       masterName: String(masterName),
       operation: `${suite.toLowerCase()}-${tcId || 'all'}`,
@@ -2277,6 +2549,11 @@ app.post('/api/compliance/run', async (req, res) => {
     });
     const rawMessage = String(error?.message || 'Compliance run failed');
     const sanitized = rawMessage.replace(/\s*\[FAIL_SCREENSHOT\][^\r\n]*/i, '').trim();
+    const artifacts = buildComplianceReportArtifacts(req, {
+      status: 'failed',
+      error: rawMessage,
+      recordings: savedRecordings,
+    }, rawMessage);
     appendTestReport({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       masterName: String(masterName),
@@ -2284,8 +2561,7 @@ app.post('/api/compliance/run', async (req, res) => {
       status: 'failed',
       reason: buildReasonFromFailureText(sanitized, 'Compliance run failed'),
       logs: trimReportText(`${rawMessage}\n\n${sanitized}`),
-      screenshotUrl: '',
-      screenshotFile: '',
+      ...artifacts,
       error: sanitized,
       createdAt: new Date().toISOString(),
     });
@@ -2294,7 +2570,7 @@ app.post('/api/compliance/run', async (req, res) => {
 });
 
 const REALTIME_COMPLIANCE_RETENTION_LIMIT = 100;
-const REALTIME_COMPLIANCE_DI_DEFAULT_TC_IDS = ['TC-DI-01', 'TC-DI-02-01', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
+const REALTIME_COMPLIANCE_DI_DEFAULT_TC_IDS = ['TC-DI-01', 'TC-DI-02', 'TC-DI-06-01', 'TC-DI-07-01', 'TC-DI-08-01', 'TC-DI-09-01'];
 const REALTIME_COMPLIANCE_MD_DEFAULT_TC_IDS = ['TC-MD-01-01', 'TC-MD-01-02', 'TC-MD-02-01', 'TC-MD-03-01', 'TC-MD-04-01', 'TC-MD-05-01', 'TC-MD-06-01', 'TC-MD-07-01', 'TC-MD-08-01'];
 const REALTIME_COMPLIANCE_AT_DEFAULT_TC_IDS = [
   'TC-AT-01-01',
@@ -2316,21 +2592,57 @@ const REALTIME_COMPLIANCE_AT_DEFAULT_TC_IDS = [
   'TC-AT-09-02',
   'TC-AT-10-01',
 ];
-const realtimeComplianceRunsStore = readComplianceRunsStore();
+const REALTIME_COMPLIANCE_EH_DEFAULT_TC_IDS = [
+  'TC-EH-01-01',
+  'TC-EH-01-02',
+  'TC-EH-02-01',
+  'TC-EH-03-01',
+  'TC-EH-03-02',
+  'TC-EH-03-03',
+  'TC-EH-04-01',
+  'TC-EH-05-01',
+  'TC-EH-05-02',
+  'TC-EH-05-03',
+  'TC-EH-06-01',
+];
+const REALTIME_COMPLIANCE_AC_DEFAULT_TC_IDS = [
+  'TC-AC-01',
+  'TC-AC-02',
+  'TC-AC-03',
+  'TC-AC-MC-01',
+  'TC-AC-MA-01',
+  'TC-AC08-01',
+  'TC-AC08-02',
+  'TC-AC08-03',
+  'TC-AC08-04',
+  'TC-AC10-01',
+  'TC-AC10-02',
+];
+const REALTIME_COMPLIANCE_PR_DEFAULT_TC_IDS = [
+  'TC-PR-01-01',
+  'TC-PR-01-02',
+  'TC-PR-02-01',
+  'TC-PR-03-01',
+  'TC-PR-04-01',
+  'TC-PR-05-01',
+  'TC-PR-06-01',
+];
+const realtimeComplianceRunsStore = { runsById: {} };
 const realtimeComplianceSseClients = new Map(); // runId -> Set(response)
 const realtimeComplianceRunSecrets = new Map(); // runId -> sensitive config (passwords)
 const realtimeComplianceRunTasks = new Map(); // runId -> { stopRequested: boolean, child: ChildProcess | null }
 
-Object.values(realtimeComplianceRunsStore?.runsById || {}).forEach((run) => {
-  if (String(run?.status || '').toLowerCase() === 'running') {
-    run.status = 'failed';
-    run.error = run.error || 'Compliance run was interrupted by a server restart.';
-    run.progressMessage = run.error;
-    run.completedAt = run.completedAt || new Date().toISOString();
-    run.updatedAt = new Date().toISOString();
-  }
-});
-writeComplianceRunsStore(realtimeComplianceRunsStore);
+function reconcileRealtimeRunsAfterStartup() {
+  Object.values(realtimeComplianceRunsStore?.runsById || {}).forEach((run) => {
+    if (String(run?.status || '').toLowerCase() === 'running') {
+      run.status = 'failed';
+      run.error = run.error || 'Compliance run was interrupted by a server restart.';
+      run.progressMessage = run.error;
+      run.completedAt = run.completedAt || new Date().toISOString();
+      run.updatedAt = new Date().toISOString();
+    }
+  });
+}
 
 function isRealtimeComplianceTerminal(status) {
   const normalized = String(status || '').toLowerCase().trim();
@@ -2407,6 +2719,9 @@ function getRealtimeComplianceDefaultTcIds(suite) {
   const normalized = normalizeComplianceSuite(suite);
   if (normalized === 'MD') return [...REALTIME_COMPLIANCE_MD_DEFAULT_TC_IDS];
   if (normalized === 'AT') return [...REALTIME_COMPLIANCE_AT_DEFAULT_TC_IDS];
+  if (normalized === 'EH') return [...REALTIME_COMPLIANCE_EH_DEFAULT_TC_IDS];
+  if (normalized === 'AC') return [...REALTIME_COMPLIANCE_AC_DEFAULT_TC_IDS];
+  if (normalized === 'PR') return [...REALTIME_COMPLIANCE_PR_DEFAULT_TC_IDS];
   return [...REALTIME_COMPLIANCE_DI_DEFAULT_TC_IDS];
 }
 
@@ -2556,6 +2871,22 @@ function appendRealtimeComplianceReportEntry({
   const normalizedResult = normalizeRealtimeComplianceResultPayload(result, { tcId: fallbackTcId, suite: normalizedSuite });
   const normalizedStatus = normalizeRealtimeComplianceStatus(normalizedResult?.status);
   const tcId = String(normalizedResult?.tcId || fallbackTcId || 'all').trim();
+  const complianceStepResults = buildComplianceStepResults(normalizedResult?.details || []);
+  const reportReason = buildComplianceReportReason({
+    status: normalizedStatus,
+    title: normalizedResult?.title,
+    tcId,
+    stepResults: complianceStepResults,
+    errorText: normalizedResult?.error || normalizedResult?._debug || '',
+  });
+  const reportLogs = buildComplianceReportLogs({
+    stepResults: complianceStepResults,
+    debugLog: normalizedResult?._debug || '',
+    details: normalizedResult?.details || [],
+    executionTraceability: normalizedResult?.executionTraceability || null,
+  });
+  const shouldCaptureError = normalizedStatus === 'failed';
+  const artifacts = buildComplianceReportArtifacts(null, normalizedResult, normalizedResult?.error || reportReason || '');
 
   appendTestReport({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2568,18 +2899,14 @@ function appendRealtimeComplianceReportEntry({
     masterName: String(masterName || ''),
     operation: `compliance-${normalizedSuite.toLowerCase()}-${tcId.toLowerCase().replace(/\s+/g, '-')}`,
     status: normalizedStatus,
-    reason: normalizedStatus === 'passed'
-      ? `${normalizedResult?.title || tcId || 'Compliance test'} passed`
-      : normalizedStatus === 'blocked'
-        ? `${normalizedResult?.title || tcId || 'Compliance test'} blocked`
-        : normalizedStatus === 'not-performed'
-          ? `${normalizedResult?.title || tcId || 'Compliance test'} not performed`
-          : `${normalizedResult?.title || tcId || 'Compliance test'} failed`,
-    logs: trimReportText(`${normalizedResult?._debug || ''}\n\n${JSON.stringify(normalizedResult?.details || {}, null, 2)}`),
-    screenshotUrl: '',
-    screenshotFile: '',
-    error: (normalizedStatus !== 'passed' && normalizedStatus !== 'not-performed')
-      ? trimReportText(String(normalizedResult?.error || JSON.stringify(normalizedResult?.details || '', null, 2)))
+    reason: reportReason,
+    logs: reportLogs,
+    complianceStepResults,
+    complianceDetails: Array.isArray(normalizedResult?.details) ? normalizedResult.details : [],
+    executionTraceability: normalizedResult?.executionTraceability || null,
+    ...artifacts,
+    error: shouldCaptureError
+      ? trimReportText(String(normalizedResult?.error || reportReason || JSON.stringify(normalizedResult?.details || '', null, 2)))
       : '',
     createdAt: new Date().toISOString(),
   });
@@ -2616,6 +2943,12 @@ function runComplianceScriptInterruptible(env, suite = 'DI', runId = '') {
     ? 'master-data-runner.js'
     : normalizedSuite === 'AT'
       ? 'audit-trail-runner.js'
+      : normalizedSuite === 'EH'
+        ? 'error-handling-runner.js'
+        : normalizedSuite === 'AC'
+          ? 'access-control-runner.js'
+        : normalizedSuite === 'PR'
+          ? 'performance-reliability-runner.js'
       : 'compliance-runner.js';
   const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'compliance', runnerFile);
   const cwd = path.resolve(__dirname, '..', 'playwright-tests');
@@ -2718,7 +3051,7 @@ async function runRealtimeComplianceSingleCase({
 
     return { ok: true, result: normalized, recordings };
   } catch (error) {
-    await finalizeRecordingCaptureSafe(recordingCapture, {
+    const recordings = await finalizeRecordingCaptureSafe(recordingCapture, {
       kind: 'compliance',
       masterName: String(masterName),
       operation: `${normalizedSuite.toLowerCase()}-${String(tcId || 'all').toLowerCase()}`,
@@ -2737,8 +3070,9 @@ async function runRealtimeComplianceSingleCase({
         error: sanitized,
         details: [{ step: 'Execution failed', passed: false, reason: sanitized }],
         _debug: rawMessage,
+        recordings,
       }, { suite: normalizedSuite, tcId }),
-      recordings: [],
+      recordings,
     };
   }
 }
@@ -2931,7 +3265,7 @@ async function processRealtimeComplianceRun(runId) {
 
 app.post('/api/compliance/runs', (req, res) => {
   const suite = normalizeComplianceSuite(req.body?.suite || process.env.QT_SUITE || 'DI');
-  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'https://ipdev.quickflow.in/login';
+  const loginUrl = req.body?.loginUrl || process.env.QT_URL || 'http://localhost:5173/';
   const username = req.body?.username || process.env.QT_USER || 'dhruvi';
   const password = req.body?.password || process.env.QT_PASS || '';
   const username2 = req.body?.username2 || process.env.QT_USER2 || username;
@@ -3113,16 +3447,233 @@ app.get('/api/compliance/runs/:runId/stream', (req, res) => {
 
 // ─── Template Workflow: Get last run state (for Resume) ───────────────────────
 app.get('/api/template-workflow/last-run', (req, res) => {
-  const lastRunPath = path.resolve(__dirname, 'last-run-state.json');
   try {
-    if (!fs.existsSync(lastRunPath)) return res.json({ exists: false });
-    const data = JSON.parse(fs.readFileSync(lastRunPath, 'utf8'));
+    const data = storage.getTemplateWorkflowState('lastRun');
+    if (!data) return res.json({ exists: false });
     return res.json({ exists: true, ...data });
   } catch {
     return res.json({ exists: false });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Node backend running on http://127.0.0.1:${PORT}`);
+app.get('/api/template-workflow/last-passed', (req, res) => {
+  try {
+    const data = storage.getTemplateWorkflowState('lastPassed');
+    if (!data) return res.json({ exists: false });
+    return res.json({ exists: true, ...data });
+  } catch {
+    return res.json({ exists: false });
+  }
 });
+
+// ─── Template Design Automation ──────────────────────────────────────────────
+
+function runTemplateDesignScript(env) {
+  const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'template-design-automation.js');
+  const cwd = path.resolve(__dirname, '..', 'playwright-tests');
+
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [scriptPath], {
+      cwd,
+      env,
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 300000, // 5 min
+    }, (error, stdout, stderr) => {
+      if (error && !stdout) {
+        return reject(new Error(stderr || error.message));
+      }
+      try {
+        const parsed = JSON.parse((stdout || '').toString().trim());
+        parsed._debug = (stderr || '').toString().trim();
+        resolve(parsed);
+      } catch {
+        const debug = (stderr || '').toString().trim();
+        reject(new Error('Template Design script did not return valid JSON' + (debug ? ': ' + debug : '')));
+      }
+    });
+  });
+}
+
+function fetchTemplateDesignOptions(env) {
+  const scriptPath = path.resolve(__dirname, '..', 'playwright-tests', 'fetch-template-design-options.js');
+  const cwd = path.resolve(__dirname, '..', 'playwright-tests');
+
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [scriptPath], {
+      cwd,
+      env,
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 300000,
+    }, (error, stdout, stderr) => {
+      if (error && !stdout) {
+        return reject(new Error(stderr || error.message));
+      }
+      try {
+        const parsed = JSON.parse((stdout || '').toString().trim());
+        parsed._debug = (stderr || '').toString().trim();
+        if (parsed.status === 'failed') {
+          return reject(new Error(parsed.error || parsed._debug || 'Failed to fetch template design options'));
+        }
+        resolve(parsed);
+      } catch {
+        const debug = (stderr || '').toString().trim();
+        reject(new Error('Template Design options script did not return valid JSON' + (debug ? ': ' + debug : '')));
+      }
+    });
+  });
+}
+
+function isTemplateDesignPass(jsonResult) {
+  if (!jsonResult || jsonResult.status !== 'completed') return false;
+
+  const summary = jsonResult.summary || {};
+  const failedControls = Number(summary.failed || 0);
+  const partialControls = Number(summary.partial || 0);
+  if (failedControls > 0 || partialControls > 0) return false;
+
+  const steps = jsonResult.steps || {};
+  return !Object.values(steps).some((step) => step && (step.status === 'failed' || step.status === 'partial'));
+}
+
+app.post('/api/template-design/run', async (req, res) => {
+  const showBrowser   = req.body?.showBrowser !== false;
+  const flowState     = req.body?.flowState || {};
+
+  const env = {
+    ...process.env,
+    QT_HEADLESS:            showBrowser ? 'false' : 'true',
+    QT_RECORD_VIDEO:        'true',
+    QT_SITE_NAME:           String(flowState.siteName       || ''),
+    QT_APP_NAME:            String(flowState.appName        || ''),
+    QT_TEMPLATE_NAME:       String(flowState.templateName   || ''),
+    QT_SUB_TEMPLATE_NAME:   String(flowState.subTemplateName || ''),
+    QT_WORKFLOW_NAME:       String(flowState.workflowName   || ''),
+  };
+
+  const recordingCapture = beginRecordingCapture();
+  const runStartedAt = Date.now();
+
+  try {
+    const jsonResult = await runTemplateDesignScript(env);
+    const passed = isTemplateDesignPass(jsonResult);
+
+    const savedRecordings = await finalizeRecordingCaptureSafe(recordingCapture, {
+      kind:            'template-design',
+      masterName:      'Template Design',
+      operation:       'template-design-automation',
+      status:          passed ? 'completed' : 'failed',
+      keepPrimaryOnly: true,
+    });
+
+    const recName = savedRecordings?.[0]?.name || '';
+    const recUrl  = recName
+      ? `${req.protocol}://${req.get('host')}/test-report-artifacts/${encodeURIComponent(recName)}`
+      : '';
+
+    // Find failure screenshot from result
+    const failShot = Array.isArray(jsonResult?.screenshots)
+      ? jsonResult.screenshots.filter(Boolean).pop()
+      : '';
+    const shotFile = failShot ? path.basename(String(failShot)) : '';
+    const shotUrl  = buildArtifactUrl(req, shotFile);
+
+    const summary = jsonResult?.summary || {};
+    const reason = passed
+      ? `Template Design automation completed: ${summary.totalControls || 0} controls tested (${summary.passed || 0} passed, ${summary.failed || 0} failed, ${summary.partial || 0} partial, ${summary.skipped || 0} skipped)`
+      : `Template Design automation failed or completed with issues (${summary.failed || 0} failed, ${summary.partial || 0} partial controls)`;
+
+    appendTestReport({
+      id:           `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      masterName:   'Template Design',
+      operation:    'template-design-automation',
+      status:       passed ? 'passed' : 'failed',
+      reason,
+      logs:         trimReportText(jsonResult?._debug || ''),
+      screenshotUrl: shotUrl,
+      screenshotFile: shotFile,
+      recordingUrl:  recUrl,
+      error:         passed ? '' : reason,
+      createdAt:     new Date().toISOString(),
+    });
+
+    return res.json({
+      status:        passed ? 'passed' : 'failed',
+      message:       reason,
+      jsonResult,
+      recordings:    savedRecordings,
+      screenshotUrl: shotUrl,
+    });
+  } catch (error) {
+    const rawMessage = String(error?.message || 'Template Design automation failed');
+    appendTestReport({
+      id:           `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      masterName:   'Template Design',
+      operation:    'template-design-automation',
+      status:       'failed',
+      reason:       buildReasonFromFailureText(rawMessage, 'Template Design automation failed'),
+      logs:         trimReportText(rawMessage),
+      screenshotUrl: '',
+      screenshotFile: '',
+      error:         rawMessage,
+      createdAt:     new Date().toISOString(),
+    });
+    return res.status(500).json({
+      status:  'failed',
+      message: buildReasonFromFailureText(rawMessage, 'Template Design automation failed'),
+    });
+  }
+});
+
+app.get('/api/template-design/options', async (req, res) => {
+  const showBrowser = String(req.query.showBrowser || 'false').toLowerCase() === 'true';
+  const env = {
+    ...process.env,
+    QT_HEADLESS: showBrowser ? 'false' : 'true',
+  };
+
+  try {
+    const data = await fetchTemplateDesignOptions(env);
+    return res.json({
+      status: 'passed',
+      apps: Array.isArray(data?.apps) ? data.apps : [],
+      debug: data?._debug || '',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'failed',
+      message: String(error?.message || 'Failed to fetch template design options'),
+    });
+  }
+});
+
+function hydrateRuntimeCachesFromStorage() {
+  const persistedMasterFields = readMasterFields();
+  masterFieldsCache.clear();
+  for (const [masterName, value] of persistedMasterFields.entries()) {
+    masterFieldsCache.set(masterName, normalizeFieldCacheEntry(value));
+  }
+
+  const initialMasters = readMasters();
+  mastersCache = Array.isArray(initialMasters?.masters) ? initialMasters.masters : [];
+  mastersFetchedAt = initialMasters?.fetchedAt || null;
+
+  const persistedComplianceStore = readComplianceRunsStore();
+  realtimeComplianceRunsStore.runsById = persistedComplianceStore?.runsById || {};
+  reconcileRealtimeRunsAfterStartup();
+  writeComplianceRunsStore(realtimeComplianceRunsStore);
+}
+
+async function bootstrap() {
+  try {
+    await storage.initStorage();
+    hydrateRuntimeCachesFromStorage();
+    app.listen(PORT, () => {
+      console.log(`Node backend running on http://127.0.0.1:${PORT}`);
+    });
+  } catch (error) {
+    console.error('[startup] failed to initialize MongoDB storage:', error?.message || error);
+    process.exit(1);
+  }
+}
+
+bootstrap();

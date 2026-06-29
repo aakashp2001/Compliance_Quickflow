@@ -47,3 +47,8 @@ Audit_Trail_Module_Gap_Analysis.md
 # Optional caches
 .cache/
 *.tsbuildinfo
+.omc/
+
+# Cloned reference repo (separate git, kept locally for context)
+quickflow_core/
+Project.Documents/

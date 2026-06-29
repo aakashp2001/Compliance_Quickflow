@@ -399,6 +399,18 @@ button:disabled {
 .test-report-search-control input {
   min-width: 0;
   flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.test-report-search-control input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
 }
 
 .test-report-clear-search {
@@ -418,13 +430,9 @@ button:disabled {
   background: #fff;
 }
 
-.test-report-recording-cell {
-  min-width: 160px;
-  width: 220px;
-}
-
 .test-report-url-cell {
-  min-width: 140px;
+  min-width: 130px;
+  max-width: 160px;
   white-space: nowrap;
 }
 
@@ -624,8 +632,8 @@ button:disabled {
   word-break: break-word;
 }
 
-.test-report-teststeps -col,
-.test-report-teststeps -cell {
+.test-report-teststeps-col,
+.test-report-teststeps-cell {
   width: 280px;
   min-width: 260px;
 }
@@ -644,34 +652,36 @@ button:disabled {
   word-break: break-word;
 }
 
-/* Make Logs column smaller */
-.test-report-logs-col,
-.test-report-logs-cell {
-  width: 220px;
-  min-width: 180px;
-  max-width: 260px;
-}
-
-/* Make Reason column smaller */
-.test-report-reason-col {
-  min-width: 240px;
-  max-width: 320px;
-  width: 300px;
-}
-
-.test-report-col-status { min-width: 92px; }
-.test-report-col-time { min-width: 180px; }
-.test-report-col-master { min-width: 130px; }
-.test-report-col-operation { min-width: 130px; }
-.test-report-col-url { min-width: 150px; }
-.test-report-col-recording { min-width: 220px; }
+/* Column sizing — balanced widths, no overlap */
+.test-report-col-status { min-width: 82px; max-width: 100px; }
+.test-report-col-time { min-width: 150px; max-width: 170px; }
+.test-report-col-master { min-width: 100px; max-width: 130px; }
+.test-report-col-operation { min-width: 100px; max-width: 130px; }
+.test-report-teststeps-col { min-width: 130px; max-width: 180px; }
+.test-report-reason-col { min-width: 200px; max-width: 320px; }
+.test-report-logs-col { min-width: 220px; max-width: 350px; }
+.test-report-col-url { min-width: 130px; max-width: 160px; }
+.test-report-col-recording { min-width: 130px; max-width: 160px; }
+.test-report-col-download { min-width: 90px; max-width: 110px; }
 
 .test-report-table tbody tr:nth-child(even) {
-  background: rgba(15, 122, 108, 0.03);
+  background: rgba(15, 122, 108, 0.02);
 }
 
 .test-report-table tbody tr:hover {
-  background: rgba(15, 122, 108, 0.08);
+  background: rgba(15, 122, 108, 0.06);
+}
+
+.test-report-table tbody tr.row-pass {
+  border-left: 3px solid var(--success);
+}
+
+.test-report-table tbody tr.row-fail {
+  border-left: 3px solid var(--danger);
+}
+
+.test-report-table tbody tr.row-audit {
+  border-left: 3px solid #d97706;
 }
 
 .test-report-logs summary {
@@ -697,7 +707,9 @@ button:disabled {
 }
 
 .test-report-link {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   overflow-wrap: anywhere;
 }
 
@@ -2434,8 +2446,9 @@ body.page-test-report .main-inner {
 }
 
 .filter-chip:hover {
-  background: #f8fafc;
-  color: white
+  background: #f1f5f9;
+  color: var(--text);
+  border-color: #cbd5e1;
 }
 
 .filter-chip--active {
@@ -2482,6 +2495,7 @@ body.page-test-report .main-inner {
 }
 
 .report-status-pill {
+  width: max-content;
   display: inline-block;
   padding: 0.2rem 0.55rem;
   border-radius: 6px;
@@ -2513,6 +2527,38 @@ body.page-test-report .main-inner {
 .test-report-download-cell {
   text-align: center;
   vertical-align: middle;
+}
+
+.screenshot-step-badge {
+  display: inline-block;
+  padding: 0.15rem 1rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  margin-top: 0.2rem;
+  white-space: nowrap;
+  text-wrap: auto
+  
+}
+
+.empty-state-box {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  margin: 1rem 0;
+}
+
+.empty-state-box strong {
+  display: block;
+  color: var(--text);
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
 }
 
 .btn-download-report {
@@ -2575,4 +2621,9 @@ body.page-test-report .main-inner {
   border-radius: 6px;
   padding: 0.35rem 0.65rem;
   display: inline-block;
+}
+
+.test-report-url-cell div {
+  display: grid;
+  gap: 0.25rem;
 }

@@ -27,7 +27,7 @@ Entry scripts are simple Node programs that use Playwright APIs and typically em
 Helpers & structure
 -------------------
 
-- `helpers/` contains reusable code: `formFiller.js`, `formDiscovery.js`, `smartFiller.js`, `discoverMasters.js`, `uiActions.js`, and `auditTrail.js`.
+-- `helpers/` contains reusable code: `formFiller.js`, `formDiscovery.js`, `smartFiller.js`, `discoverMasters.js`, `uiActions.js`, and `auditTrail.js`.
 - Playwright configuration is defined in `playwright.config.js` — check `workers` and `timeout` settings before running heavy suites.
 
 Output and artifacts
@@ -35,49 +35,74 @@ Output and artifacts
 
 Playwright scripts record screenshots and videos according to configuration (typically `retain-on-failure`). Scripts often write artifacts to a repo-local artifacts folder which the backend indexes and serves.
 
+
+# Playwright Tests
+
+Overview
+--------
+
+All automation logic lives under `playwright-tests/`. There are two complementary ways the project uses Playwright:
+
+1. Short-lived standalone Node entry scripts (e.g. `crud-master.js`, `fetch-masters.js`) that are spawned by the backend via `execFile(process.execPath, [scriptPath])`. These are intended for on-demand runs and must emit exactly one machine-readable JSON payload to `stdout` at the end of execution.
+2. A developer-focused Playwright test-runner setup (config in [playwright-tests/playwright.config.js](playwright-tests/playwright.config.js)) for running test suites locally with `npx playwright test`.
+
+Quick start
+-----------
+
+```powershell
+cd playwright-tests
+npm install
+npx playwright install
+
+# Run a backend-style entry script directly (example):
+QT_URL="https://..." QT_USER=qa QT_PASS=secret node fetch-masters.js
+
+# Or use the Playwright test runner for spec-driven tests:
+npx playwright test
+```
+
+Entry scripts vs test runner
+----------------------------
+
+- Entry scripts (examples: `crud-master.js`, `fetch-masters.js`, `compare-field-master.js`, `validate-mandatory-fields.js`) are executed as Node programs and are designed to be run by the backend. The backend expects:
+  - Playwright diagnostic or step logs to be written to `stderr` (so they don't corrupt the JSON pipeline).
+  - A single final JSON object written to `stdout` (this is parsed by the backend with `JSON.parse`).
+- The Playwright test-runner configuration is primarily for developer convenience (parallelization, reporters, HTML report). The repo includes a Playwright config at [playwright-tests/playwright.config.js](playwright-tests/playwright.config.js).
+
+Helpers & structure
+-------------------
+
+-- `playwright-tests/helpers/` contains shared utilities: `formFiller.js`, `formDiscovery.js`, `smartFiller.js`, `discoverMasters.js`, `uiActions.js`, and `auditTrail.js`.
+- Entry scripts and helpers should avoid printing non-diagnostic JSON to `stdout` — use `process.stderr.write()` for logs and `process.stdout.write(JSON.stringify(result))` for the final payload.
+
+Environment variables used by scripts
+------------------------------------
+
+- `QT_URL`, `QT_USER`, `QT_PASS` — target application login credentials.
+- `QT_MASTER` — target master/module (e.g., `Country`, `App`).
+- `QT_OP` — CRUD operation (`create`, `update`, `delete`, `all`, `duplicate-check`).
+- `QT_HEADLESS` — `'true'`/`'false'` to control headless mode.
+- `QT_VERIFY_AUDIT`, `QT_RECORD_VIDEO`, `QT_PREFILLED_VALUES` — additional run-time flags used by several entry scripts.
+
+Artifacts & integration
+-----------------------
+
+- Playwright artifacts (videos and screenshots) are written under `playwright-tests/test-reports`. The backend finalizes and renames videos and indexes metadata via the storage layer; artifacts are served at `/test-report-artifacts`.
+- For reliable backend parsing, scripts must ensure the final JSON is the last thing written to `stdout` and avoid writing HTML/large logs to `stdout`.
+
+Playwright config
+-----------------
+
+- The test-runner config controls workers, timeouts, and reporters. The current config runs tests serially (`workers: 1`) by default because many flows depend on a shared login state. See [playwright-tests/playwright.config.js](playwright-tests/playwright.config.js).
+
 Best practices
 --------------
 
-- Export credentials via environment variables or pass them in the request body when invoked from the backend.
-- Keep entry scripts idempotent and ensure they return JSON on stdout for reliable backend parsing.
-# Playwright Tests Context & Architecture: TestHive
+- Keep entry scripts idempotent and limited to a single unit of work so they can be spawned safely from the API.
+- Use environment variables for credentials (do not hardcode secrets into scripts).
+- Ensure the final payload is JSON and use `stderr` for human-readable debug logs.
 
-## 1. System Role & Overview
-The `playwright-tests` directory contains the automation engine. Unlike typical Playwright setups where tests are run via `npx playwright test` in a CI/CD pipeline, these scripts are designed to be executed dynamically as **standalone Node.js child processes** by the Express backend.
-
-**Core Data Flow:**
-1. Express Backend spawns `node fetch-masters.js` (passing environment variables).
-2. The script launches Chromium, automates the UI, and gathers data.
-3. The script writes `console.log` messages to `stderr` (for terminal debugging).
-4. Upon completion, the script writes exactly one JSON payload to `stdout`.
-5. The backend parses `stdout` and forwards it to the React UI.
-
----
-
-## 2. Environment Variables Integration
-These scripts rely on Node's `process.env` to receive context from the backend:
-- `QT_URL`: Target application login URL.
-- `QT_USER` / `QT_PASS`: Authentication credentials.
-- `QT_MASTER`: The specific module/form to test (e.g., "users", "departments").
-- `QT_HEADLESS`: If `"true"`, browser runs invisibly.
-- `QT_OP`: For CRUD, dictates the stage (`create`, `update`, `delete`, `all`).
-- `QT_VERIFY_AUDIT`: Boolean to trigger audit trail validation.
-
----
-
-## 3. Detailed Runner Scripts
-
-### 3.1. `crud-master.js`
-The flagship script. It performs end-to-end lifecycle testing.
-- **Execution Flow**:
-  1. `login()`: Authenticates and waits for the dashboard.
-  2. `switchSiteAndOpenAnyApp()`: Uses heuristics to navigate through complex app-switcher menus if necessary.
-  3. `navigateTo()`: Hits the specific Master table URL.
-  4. `openCreateForm()`: Opens the offcanvas side-panel.
-  5. `collectStableFormFields()`: Introspects the form to find all inputs.
-  6. `smartFillOffcanvasForm()`: Injects synthetic data into the form based on input types.
-  7. `getActionableSaveButton()` -> `click()`: Submits the form.
-  8. **Audit Verification**: If `QT_VERIFY_AUDIT` is true, the script pauses, extracts the generated data, navigates to the Audit Trail module, and strictly verifies that the row creation was logged in the database audit log.
+If you want, I can add a short checklist into this doc that the backend expects from each entry script (stdout protocol, stderr usage, artifact naming conventions). Would you like that added?
   9. **Update/Delete**: Finds the newly created row in the datatable, clicks edit, modifies data, saves, and subsequently deletes the row.
 - **Resilience**: It features custom logic like `dismissBlockingOverlays()` to automatically close intrusive SweetAlert popups (`.swal2-confirm`) that block interactions.
 
@@ -111,7 +136,7 @@ Highly complex script handling application audit logs.
 ### 4.3. `smartFiller.js` & `formFiller.js`
 The synthetic data generation engine.
 - `smartFillOffcanvasForm()`: Loops over discovered fields.
-- Uses `dependent-dropdowns.json` (managed by the backend) to ensure that if a form has a "Country" and "State" dropdown, it fills them in the correct hierarchical order so the State dropdown enables properly.
+-- Uses dependency configuration (persisted in the `dependency_configs` MongoDB collection) to ensure that if a form has a "Country" and "State" dropdown, it fills them in the correct hierarchical order so the State dropdown enables properly. Legacy `playwright-tests/helpers/dependent-dropdowns.json` data can be migrated using `backend/scripts/migrate-json-to-mongo.js`.
 - Generates data based on heuristics: if a label contains "Phone", it generates 10 random digits. If it contains "Email", it generates a random `@example.com` string.
 
 ---

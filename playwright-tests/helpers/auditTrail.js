@@ -142,9 +142,10 @@ async function openAuditTrailPage(page, baseURL) {
   console.log('[AUDIT] Opening Audit Trail module...');
   const base = String(baseURL || '').replace(/\/$/, '');
   const moduleRoutes = [
-    `${base}/Audit-Trails`,
-    `${base}/Audit-Trail`,
-    `${base}/AuditTrail`,
+    `${base}/Audit-History`,
+    // `${base}/Audit-Trails`,
+    // `${base}/Audit-Trail`,
+    // `${base}/AuditTrail`,
   ].filter(Boolean);
 
   for (const url of moduleRoutes) {
@@ -691,6 +692,128 @@ async function openMasterAuditTrailReport(page) {
   return winner;
 }
 
+async function navigateToMastersAndOpenMasterAuditTrail(page, baseURL) {
+  /**
+   * Fallback navigation: main menu → Masters → Master Audit Trail.
+   * Used when the specific master audit trail report does not contain the target record.
+   */
+  const norm = (v) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  // Step 1: Ensure we are on the home/dashboard page so the main menu is visible.
+  const currentUrl = page.url();
+  if (!currentUrl || currentUrl === 'about:blank') {
+    const origin = (baseURL || 'https://ipdev.quickflow.in').replace(/\/+$/, '');
+    await page.goto(`${origin}/Home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await safeWait(page, 1500);
+  }
+
+  // Step 2: Find and click "Masters" in the main sidebar / menu.
+  const menuContainers = [
+    '#kt_aside',
+    '#sidebar',
+    '.sidebar',
+    '.sidenav',
+    '#menu',
+    '.menu',
+    'nav',
+  ];
+
+  let mastersClicked = false;
+  for (const container of menuContainers) {
+    const mastersLink = page.locator(`${container} a:visible, ${container} span:visible, ${container} .menu-link:visible`).filter({ hasText: /^\s*Masters\s*$/i }).first();
+    if (await mastersLink.isVisible().catch(() => false)) {
+      await mastersLink.click({ timeout: 5000, force: true }).catch(() => {});
+      mastersClicked = true;
+      console.log('[AUDIT] Clicked "Masters" in main menu');
+      await safeWait(page, 800);
+      break;
+    }
+  }
+
+  if (!mastersClicked) {
+    // Fallback: try any visible element with exact text "Masters"
+    const genericMasters = page.locator('a:visible, span:visible, .menu-link:visible, button:visible').filter({ hasText: /^\s*Masters\s*$/i }).first();
+    if (await genericMasters.isVisible().catch(() => false)) {
+      await genericMasters.click({ timeout: 5000, force: true }).catch(() => {});
+      mastersClicked = true;
+      console.log('[AUDIT] Clicked generic "Masters" menu item');
+      await safeWait(page, 800);
+    }
+  }
+
+  if (!mastersClicked) {
+    throw new Error('Could not find "Masters" in the main menu.');
+  }
+
+  // Step 3: Within the expanded Masters menu, find and click "Master Audit Trail".
+  let matClicked = false;
+  for (const container of menuContainers) {
+    const matLink = page.locator(`${container} a:visible, ${container} span:visible, ${container} .menu-link:visible`).filter({ hasText: /^\s*Master Audit Trail\s*$/i }).first();
+    if (await matLink.isVisible().catch(() => false)) {
+      await Promise.all([
+        page.waitForEvent('popup', { timeout: 8000 }).catch(() => null),
+        matLink.click({ timeout: 5000, force: true }).catch(() => {}),
+      ]);
+      matClicked = true;
+      console.log('[AUDIT] Clicked "Master Audit Trail" under Masters');
+      await safeWait(page, 1200);
+      break;
+    }
+  }
+
+  if (!matClicked) {
+    // Fallback: try any visible element with exact text "Master Audit Trail"
+    const genericMat = page.locator('a:visible, span:visible, .menu-link:visible, button:visible').filter({ hasText: /^\s*Master Audit Trail\s*$/i }).first();
+    if (await genericMat.isVisible().catch(() => false)) {
+      await Promise.all([
+        page.waitForEvent('popup', { timeout: 8000 }).catch(() => null),
+        genericMat.click({ timeout: 5000, force: true }).catch(() => {}),
+      ]);
+      matClicked = true;
+      console.log('[AUDIT] Clicked generic "Master Audit Trail" link');
+      await safeWait(page, 1200);
+    }
+  }
+
+  if (!matClicked) {
+    throw new Error('Could not find "Master Audit Trail" under Masters menu.');
+  }
+
+  // Step 4: Resolve report context (same tab or popup).
+  const isActualReportViewUrl = (url) => {
+    const href = typeof url === 'string' ? url : String(url?.href || '');
+    return /\/report\/view(?:\?|$|#|\/)/i.test(href) && !/\/report\/viewer(?:\?|$|#|\/)/i.test(href);
+  };
+
+  let reportContext = page;
+  const popup = await page.waitForEvent('popup', { timeout: 5000 }).catch(() => null);
+  if (popup) {
+    await popup.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {});
+    await popup.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+    await safeWait(popup, 1200);
+    reportContext = await resolveAuditInteractionContext(popup);
+    console.log(`[AUDIT] Master Audit Trail opened in popup: ${popup.url()}`);
+  } else if (isActualReportViewUrl(page.url())) {
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await safeWait(page, 1200);
+    reportContext = await resolveAuditInteractionContext(page);
+    console.log(`[AUDIT] Master Audit Trail opened in same tab: ${page.url()}`);
+  } else {
+    // Last resort: use any already-open /report/view popup
+    const openPopups = page.context().pages().filter((p) => !p.isClosed() && p !== page && isActualReportViewUrl(p.url()));
+    if (openPopups.length) {
+      reportContext = openPopups[openPopups.length - 1];
+      await reportContext.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+      await safeWait(reportContext, 1000);
+      reportContext = await resolveAuditInteractionContext(reportContext);
+      console.log(`[AUDIT] Using existing Master Audit Trail popup: ${reportContext.url()}`);
+    }
+  }
+
+  return reportContext;
+}
+
 async function openSpecificMasterAudit(page, expected) {
   console.log(`[AUDIT] Opening specific master audit: ${expected.masterDisplayName || expected.masterName}`);
   const masterCandidates = buildMasterNameCandidates(expected.masterName);
@@ -958,13 +1081,17 @@ function filterOperationScopedRowSnapshots(rows, expected) {
       if (!anchorRows.length) return [];
 
       const anchorIndex = Number(anchorRows[0]?.index);
-      const reasonIndexes = reasonRows
+      const otherReasonRows = reasonRows.filter((row) => {
+        const val = normalizeText(row?.reasonValue);
+        return val && !includesNormalized(val, normalizedReason) && !includesNormalized(normalizedReason, val);
+      });
+      const otherReasonIndexes = otherReasonRows
         .map((row) => Number(row?.index))
         .filter((value) => Number.isFinite(value))
         .sort((a, b) => a - b);
 
-      const previousReasonIndex = reasonIndexes.filter((value) => value < anchorIndex).pop();
-      const nextReasonIndex = reasonIndexes.find((value) => value > anchorIndex);
+      const previousReasonIndex = otherReasonIndexes.filter((value) => value < anchorIndex).pop();
+      const nextReasonIndex = otherReasonIndexes.find((value) => value > anchorIndex);
       const startIndex = Number.isFinite(previousReasonIndex) ? previousReasonIndex + 1 : -Infinity;
       const endIndex = Number.isFinite(nextReasonIndex) ? nextReasonIndex - 1 : Infinity;
 
@@ -1023,7 +1150,19 @@ function extractStructuredFieldsFromSnapshots(snapshots) {
 
     const fieldNorm = norm(fieldName);
     if (!fieldNorm) continue;
-    if (/^(field\s*name|old\s*value|new\s*value|performed\s*on|status|reason|remarks?|comment|notes?)$/.test(fieldNorm)) continue;
+    // Only skip rows that look like header rows. A header row typically has
+    // the field-name cell matching a header label AND the old/new value cells
+    // also looking like headers or being empty.
+    const isHeaderLikeFieldName = /^(field\s*name|old\s*value|new\s*value|performed\s*on|status|reason|comment|notes?)$/.test(fieldNorm);
+    if (isHeaderLikeFieldName) continue;
+
+    // For ANY field — skip if it looks like a header row
+    // (i.e., oldValue and newValue are also header-like or empty)
+    const oldNorm = norm(oldValue);
+    const newNorm = norm(newValue);
+    const oldLooksLikeHeader = /^(old\s*value|previous\s*value|before)$/.test(oldNorm);
+    const newLooksLikeHeader = /^(new\s*value|current\s*value|after)$/.test(newNorm);
+    if (oldLooksLikeHeader || newLooksLikeHeader || (!oldNorm && !newNorm)) continue;
 
     out.push({ fieldName, oldValue, newValue, timestamp });
   }
@@ -1031,7 +1170,7 @@ function extractStructuredFieldsFromSnapshots(snapshots) {
   const score = (entry) => {
     let total = 0;
     if (String(entry?.oldValue || '').trim()) total += 1;
-    if (String(entry?.newValue || '').trim()) total += 2;
+    if (String(entry?.newValue || '').trim()) total += 1;
     if (String(entry?.timestamp || '').trim()) total += 1;
     return total;
   };
@@ -1082,28 +1221,24 @@ async function extractStructuredFieldsFromRows(page, matchingRows) {
     const findHeaderIndex = (headers, pattern) => headers.findIndex((h) => pattern.test(h));
 
     const allRows = Array.from(document.querySelectorAll(selector));
-    const selectedRows = [];
+    const out = [];
 
     for (const match of matches || []) {
       const byIndex = allRows[Number(match?.index)];
+      let row = null;
       if (byIndex) {
-        selectedRows.push(byIndex);
-        continue;
+        row = byIndex;
+      } else {
+        const matchText = norm(match?.text);
+        if (matchText) {
+          row = allRows.find((r) => {
+            const text = norm(rowText(r));
+            return text === matchText || text.includes(matchText) || matchText.includes(text);
+          });
+        }
       }
-      const matchText = norm(match?.text);
-      if (!matchText) continue;
-      const byText = allRows.find((row) => {
-        const text = norm(rowText(row));
-        return text === matchText || text.includes(matchText) || matchText.includes(text);
-      });
-      if (byText) selectedRows.push(byText);
-    }
-
-    const uniqueRows = Array.from(new Set(selectedRows));
-    const out = [];
-
-    for (const row of uniqueRows) {
       if (!row) continue;
+
       const table = row.closest('table');
       const headers = table
         ? Array.from(table.querySelectorAll('thead th')).map((th) => normalizeHeader(th.innerText || th.textContent || ''))
@@ -1116,16 +1251,28 @@ async function extractStructuredFieldsFromRows(page, matchingRows) {
       const cells = Array.from(row.querySelectorAll('td'));
       if (!cells.length) continue;
 
-      const fieldName = fieldIdx >= 0 ? (cells[fieldIdx]?.innerText || '').trim() : (cells[1]?.innerText || '').trim();
-      const oldValue = oldIdx >= 0 ? (cells[oldIdx]?.innerText || '').trim() : (cells[2]?.innerText || '').trim();
-      const newValue = newIdx >= 0 ? (cells[newIdx]?.innerText || '').trim() : (cells[3]?.innerText || '').trim();
-      const timestamp = perfOnIdx >= 0 ? (cells[perfOnIdx]?.innerText || '').trim() : (cells[cells.length - 1]?.innerText || '').trim();
+      const fieldName = fieldIdx >= 0 ? (cells[fieldIdx]?.innerText || cells[fieldIdx]?.textContent || '').trim() : (cells[1]?.innerText || cells[1]?.textContent || '').trim();
+      const oldValue = oldIdx >= 0 ? (cells[oldIdx]?.innerText || cells[oldIdx]?.textContent || '').trim() : (cells[2]?.innerText || cells[2]?.textContent || '').trim();
+      const newValue = newIdx >= 0 ? (cells[newIdx]?.innerText || cells[newIdx]?.textContent || '').trim() : (cells[3]?.innerText || cells[3]?.textContent || '').trim();
+      const timestamp = perfOnIdx >= 0 ? (cells[perfOnIdx]?.innerText || cells[perfOnIdx]?.textContent || '').trim() : (cells[cells.length - 1]?.innerText || cells[cells.length - 1]?.textContent || '').trim();
 
       // Skip accidental header-like rows that slip through custom grid renderers.
       const fieldNorm = norm(fieldName);
       if (!fieldNorm || /^(field\s*name|old\s*value|new\s*value|performed\s*on)$/.test(fieldNorm)) continue;
 
-      out.push({ fieldName, oldValue, newValue, timestamp });
+      const oldNorm = norm(oldValue);
+      const newNorm = norm(newValue);
+      const oldLooksLikeHeader = /^(old\s*value|previous\s*value|before)$/.test(oldNorm);
+      const newLooksLikeHeader = /^(new\s*value|current\s*value|after)$/.test(newNorm);
+      if (oldLooksLikeHeader || newLooksLikeHeader || (!oldNorm && !newNorm)) continue;
+
+      out.push({
+        matchIndex: Number(match?.index),
+        fieldName,
+        oldValue,
+        newValue,
+        timestamp
+      });
     }
 
     return out;
@@ -1379,6 +1526,9 @@ function compareAuditWithDashboard(auditFields, expectedAuditTrail, operation, o
       match = true;
     }
 
+    const isDelete = operation === 'delete';
+    const newValueEmpty = !auditField.newValue || /^\s*$|^-+$/i.test(auditField.newValue);
+
     if (match && isCreate && !oldValueEmpty) {
        mismatches.push({ field: key, expected: String(expectedValue), actual: auditField.newValue, error: `Old value for create should be empty, but was "${auditField.oldValue}"` });
        fieldValidationResults.push({
@@ -1389,25 +1539,35 @@ function compareAuditWithDashboard(auditFields, expectedAuditTrail, operation, o
          auditFieldName: auditField.fieldName,
          error: `Old value for create should be empty, but was "${auditField.oldValue}"`
        });
+    } else if (match && isDelete && !newValueEmpty) {
+       mismatches.push({ field: key, expected: String(expectedValue), actual: auditField.oldValue, error: `New value for delete should be empty, but was "${auditField.newValue}"` });
+       fieldValidationResults.push({
+         fieldName: key,
+         status: 'MISMATCH',
+         expected: String(expectedValue),
+         actual: auditField.oldValue,
+         auditFieldName: auditField.fieldName,
+         error: `New value for delete should be empty, but was "${auditField.newValue}"`
+       });
     } else if (match) {
-      matches.push({ field: key, expected: String(expectedValue), actual: operation === 'delete' ? auditField.oldValue : auditField.newValue });
+      matches.push({ field: key, expected: String(expectedValue), actual: isDelete ? auditField.oldValue : auditField.newValue });
       fieldValidationResults.push({
         fieldName: key,
         status: 'PASS',
         expected: String(expectedValue),
-        actual: operation === 'delete' ? auditField.oldValue : auditField.newValue,
+        actual: isDelete ? auditField.oldValue : auditField.newValue,
         auditFieldName: auditField.fieldName,
         error: null
       });
     } else {
-      mismatches.push({ field: key, expected: String(expectedValue), actual: operation === 'delete' ? auditField.oldValue : auditField.newValue, auditField: auditField.fieldName });
+      mismatches.push({ field: key, expected: String(expectedValue), actual: isDelete ? auditField.oldValue : auditField.newValue, auditField: auditField.fieldName });
       fieldValidationResults.push({
         fieldName: key,
         status: 'MISMATCH',
         expected: String(expectedValue),
-        actual: operation === 'delete' ? auditField.oldValue : auditField.newValue,
+        actual: isDelete ? auditField.oldValue : auditField.newValue,
         auditFieldName: auditField.fieldName,
-        error: `Expected "${expectedValue}" but found "${operation === 'delete' ? auditField.oldValue : auditField.newValue}"`
+        error: `Expected "${expectedValue}" but found "${isDelete ? auditField.oldValue : auditField.newValue}"`
       });
     }
   }
@@ -1452,7 +1612,7 @@ async function captureAuditScreenshot(context, masterName, operation, suffix) {
     target = context.page();
   }
   if (typeof target.screenshot === 'function') {
-    await target.screenshot({ path: fullPath, fullPage: true }).catch(() => {});
+    await target.screenshot({ path: fullPath, fullPage: true }).catch(() => { });
   }
   return fs.existsSync(fullPath) ? fullPath : '';
 }
@@ -1574,12 +1734,12 @@ async function navigateAndSearchMasterAudit(page, baseURL, expected) {
   const fallbackPattern = new RegExp(masterDisplay.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
   const FALLBACK_CATEGORIES = [
-    'Admin Audit Trail',
-    'RPA Audit Trail',
-    'Configuration Audit Trail',
-    'Master Audit Trail',
-    'Form Audit Trail',
-    'System Audit Trail',
+    'Admin',
+    'Configuration',
+    'Forms',
+    'Masters',
+    'RPA',
+    'System',
   ];
 
   // Step 1: Navigate to Audit Trails page first, then detect which categories are present.
@@ -2010,7 +2170,7 @@ async function verifyEachFieldIndividually(reportContext, recordID, fieldsToVeri
       for (let ri = 0; ri < allRows.length; ri++) {
         const rowText = allRows[ri]?.text || '';
         const rowRecordIDMatch = enforceRecordID ? includesNormalized(rowText, normalizedRecordID) : true;
-        const extracted = extractedFields[ri];
+        const extracted = extractedFields.find((f) => f.matchIndex === allRows[ri].index);
 
         if (!extracted) continue;
 
@@ -2149,7 +2309,33 @@ async function verifyAuditTrailEntry(page, options) {
     masterPerformedOn: options?.masterPerformedOn || '',
   };
 
-  const reportContext = await navigateAndSearchMasterAudit(page, options?.baseURL || '', expected);
+  let reportContext = null;
+  let initialNavError = null;
+  try {
+    reportContext = await navigateAndSearchMasterAudit(page, options?.baseURL || '', expected);
+  } catch (err) {
+    initialNavError = err;
+    console.log(`[AUDIT] Specific master audit report navigation failed: ${err?.message || err}`);
+  }
+
+  if (!reportContext) {
+    // Fallback: navigate via main menu → Masters → Master Audit Trail
+    console.log('[AUDIT] Falling back to main menu → Masters → Master Audit Trail...');
+    try {
+      reportContext = await navigateToMastersAndOpenMasterAuditTrail(page, options?.baseURL || '');
+    } catch (err) {
+      console.log(`[AUDIT] Main menu → Masters → Master Audit Trail fallback failed: ${err?.message || err}`);
+    }
+  }
+
+  if (!reportContext && initialNavError) {
+    throw initialNavError;
+  }
+
+  if (!reportContext) {
+    throw new Error('Audit trail report could not be opened via specific master path or main menu fallback.');
+  }
+
   expected.masterScoped = true;
 
   // Restore previous date flow: set range, then execute report.
@@ -2311,7 +2497,21 @@ async function verifyAuditTrailEntry(page, options) {
       const k = normKey(field?.fieldName);
       if (!k) continue;
       const prev = byKey.get(k);
-      const richness = (f) => (String(f?.newValue || '').trim() ? 2 : 0) + (String(f?.oldValue || '').trim() ? 1 : 0) + (String(f?.timestamp || '').trim() ? 1 : 0);
+      const richness = (f) => {
+        const hasOld = String(f?.oldValue || '').trim() ? 1 : 0;
+        const hasNew = String(f?.newValue || '').trim() ? 1 : 0;
+        const hasTimestamp = String(f?.timestamp || '').trim() ? 1 : 0;
+        // For delete, oldValue is what matters (it was the live value before deletion).
+        // For create, newValue is what matters (it is the created value).
+        // For update, both matter equally.
+        if (expected.operation === 'delete') {
+          return hasOld * 2 + hasNew + hasTimestamp;
+        }
+        if (expected.operation === 'create') {
+          return hasOld + hasNew * 2 + hasTimestamp;
+        }
+        return hasOld + hasNew + hasTimestamp;
+      };
       if (!prev || richness(field) >= richness(prev)) byKey.set(k, field);
     }
     auditDetailFields = Array.from(byKey.values());
@@ -2417,6 +2617,215 @@ async function verifyAuditTrailEntry(page, options) {
     screenshotPath = await captureAuditScreenshot(reportContext, expected.masterName, expected.operation, 'audit-no-fields').catch(() => '');
   }
 
+  // ── DELETE-SPECIFIC COMPREHENSIVE COLUMN VERIFICATION ──
+  // For delete operations, verify EVERY column in EVERY audit trail row:
+  // Record ID, Field Name, Old Value, New Value, Reason for Change, Status, Performed By, Performed On
+  if (expected.operation === 'delete' && operationRowSnapshots.length > 0) {
+    const norm = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const dashboardFields = options?.auditTrail || {};
+    const expectedRecordID = expected.recordID || expected.identifiers[0] || '';
+    const expectedReason = expected.reason || '';
+    const expectedUsername = expected.username || '';
+    const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const allColumnChecks = [];
+
+    for (const row of operationRowSnapshots) {
+      const headers = Array.isArray(row?.headers) ? row.headers : [];
+      const cells = Array.isArray(row?.cells) ? row.cells : [];
+      if (!cells.length) continue;
+
+      const findCell = (patterns) => {
+        for (const pat of patterns) {
+          const idx = headers.findIndex((h) => pat.test(String(h || '')));
+          if (idx >= 0) return String(cells[idx] || '').trim();
+        }
+        return '';
+      };
+
+      const recordID    = findCell([/^record\s*id$/i]);
+      const fieldName   = findCell([/^field\s*name$/i, /^field$/i]);
+      const oldValue    = findCell([/^old\s*value$/i]);
+      const newValue    = findCell([/^new\s*value$/i]);
+      const reason      = findCell([/^reason\s*for\s*change$/i, /^reason$/i]);
+      const status      = findCell([/^status$/i]);
+      const performedBy = findCell([/^performed\s*by$/i]);
+      const performedOn = findCell([/^performed\s*on$/i, /^timestamp$/i]);
+
+      if (recordID && expectedRecordID) {
+        const recordIdMatch = norm(recordID).includes(norm(expectedRecordID)) || norm(expectedRecordID).includes(norm(recordID));
+        allColumnChecks.push({
+          fieldName: `Record ID (${fieldName || 'row'})`,
+          status: recordIdMatch ? 'PASS' : 'MISMATCH',
+          expected: expectedRecordID,
+          actual: recordID,
+          error: recordIdMatch ? null : `Record ID mismatch: expected "${expectedRecordID}" but found "${recordID}"`,
+        });
+      }
+
+      if (fieldName) {
+        const fieldKey = Object.keys(dashboardFields).find((k) => norm(k) === norm(fieldName));
+        const fieldKnown = !!fieldKey;
+        allColumnChecks.push({
+          fieldName: `Field Name: ${fieldName}`,
+          status: fieldKnown ? 'PASS' : 'MISMATCH',
+          expected: 'Known field from pre-delete capture',
+          actual: fieldName,
+          error: fieldKnown ? null : `Field "${fieldName}" not found in pre-delete captured values`,
+        });
+
+        if (fieldKnown) {
+          const expectedOld = String(dashboardFields[fieldKey] || '');
+          const oldMatch = norm(oldValue) === norm(expectedOld) || (!oldValue && !expectedOld);
+          allColumnChecks.push({
+            fieldName: `Old Value: ${fieldName}`,
+            status: oldMatch ? 'PASS' : 'MISMATCH',
+            expected: expectedOld,
+            actual: oldValue,
+            error: oldMatch ? null : `Old value mismatch for "${fieldName}": expected "${expectedOld}" but found "${oldValue}"`,
+          });
+        }
+      }
+
+      if (newValue !== undefined) {
+        const newValueEmpty = !newValue || /^\s*$|^-+$/i.test(newValue);
+        allColumnChecks.push({
+          fieldName: `New Value: ${fieldName || '-'}`,
+          status: newValueEmpty ? 'PASS' : 'MISMATCH',
+          expected: '-',
+          actual: newValue,
+          error: newValueEmpty ? null : `New value for delete should be "-" or empty, but found "${newValue}"`,
+        });
+      }
+
+      if (reason && expectedReason) {
+        const reasonMatch = norm(reason).includes(norm(expectedReason)) || norm(expectedReason).includes(norm(reason));
+        allColumnChecks.push({
+          fieldName: `Reason: ${fieldName || '-'}`,
+          status: reasonMatch ? 'PASS' : 'MISMATCH',
+          expected: expectedReason,
+          actual: reason,
+          error: reasonMatch ? null : `Reason mismatch: expected "${expectedReason}" but found "${reason}"`,
+        });
+      }
+
+      if (status) {
+        const statusMatch = /\b(deactivated|deleted|inactive|removed)\b/i.test(status);
+        allColumnChecks.push({
+          fieldName: `Status: ${fieldName || '-'}`,
+          status: statusMatch ? 'PASS' : 'MISMATCH',
+          expected: 'Deactivated',
+          actual: status,
+          error: statusMatch ? null : `Status mismatch: expected "Deactivated" but found "${status}"`,
+        });
+      }
+
+      if (performedBy && expectedUsername) {
+        const userMatch = norm(performedBy).includes(norm(expectedUsername)) || norm(expectedUsername).includes(norm(performedBy));
+        allColumnChecks.push({
+          fieldName: `Performed By: ${fieldName || '-'}`,
+          status: userMatch ? 'PASS' : 'MISMATCH',
+          expected: expectedUsername,
+          actual: performedBy,
+          error: userMatch ? null : `Performed By mismatch: expected "${expectedUsername}" but found "${performedBy}"`,
+        });
+      }
+
+      if (performedOn) {
+        // Normalize date strings for comparison: handle "28 May 2026", "28-May-2026", "28-May-2026 18:46"
+        const normalizeDate = (str) => {
+          return str
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        };
+        const performedOnDate = normalizeDate(performedOn);
+        const todayDate = normalizeDate(todayStr);
+        const todayMatch = performedOnDate.includes(todayDate) || todayDate.includes(performedOnDate);
+        allColumnChecks.push({
+          fieldName: `Performed On: ${fieldName || '-'}`,
+          status: todayMatch ? 'PASS' : 'MISMATCH',
+          expected: todayStr,
+          actual: performedOn,
+          error: todayMatch ? null : `Performed On mismatch: expected "${todayStr}" but found "${performedOn}"`,
+        });
+      }
+    }
+
+    const passedCount = allColumnChecks.filter((r) => r.status === 'PASS').length;
+    const failedCount = allColumnChecks.filter((r) => r.status === 'MISMATCH').length;
+    const overallPassed = failedCount === 0 && allColumnChecks.length > 0;
+
+    console.log(`[AUDIT] Delete comprehensive column verification: ${passedCount}/${allColumnChecks.length} passed`);
+    for (const check of allColumnChecks) {
+      const symbol = check.status === 'PASS' ? '✓' : '✗';
+      console.log(`[AUDIT]   ${symbol} ${check.fieldName}: expected="${check.expected}" actual="${check.actual}"`);
+    }
+
+    if (comparison) {
+      const existingFvr = Array.isArray(comparison.fieldValidationResults) ? comparison.fieldValidationResults : [];
+      const mergedFvr = [...existingFvr, ...allColumnChecks];
+      const mergedPassed = mergedFvr.filter((r) => String(r?.status || '').toUpperCase() === 'PASS').length;
+      const mergedFailed = mergedFvr.filter((r) => {
+        const s = String(r?.status || '').toUpperCase();
+        return s !== 'PASS' && s !== 'EXPECTED_MISSING';
+      }).length;
+      comparison = {
+        ...comparison,
+        totalChecked: (comparison.totalChecked || 0) + allColumnChecks.length,
+        matchCount: mergedPassed,
+        mismatchCount: mergedFailed + (comparison.notFoundInAudit?.length || 0),
+        passed: comparison.passed !== false && overallPassed,
+        reason: overallPassed
+          ? `${comparison.reason || ''} | All ${allColumnChecks.length} audit columns verified for delete`
+          : `${comparison.reason || ''} | ${failedCount} audit column mismatch(es) for delete`,
+        fieldValidationResults: mergedFvr,
+        fieldValidationSummary: {
+          total: mergedFvr.length,
+          passed: mergedPassed,
+          failed: mergedFailed,
+          expectedMissing: mergedFvr.filter((r) => String(r?.status || '').toUpperCase() === 'EXPECTED_MISSING').length,
+          passedFields: mergedFvr.filter((r) => String(r?.status || '').toUpperCase() === 'PASS').map((r) => r.fieldName),
+          failedFields: mergedFvr.filter((r) => {
+            const s = String(r?.status || '').toUpperCase();
+            return s !== 'PASS' && s !== 'EXPECTED_MISSING';
+          }).map((r) => r.fieldName),
+          missingFields: [],
+          expectedMissingFields: mergedFvr.filter((r) => String(r?.status || '').toUpperCase() === 'EXPECTED_MISSING').map((r) => r.fieldName),
+        },
+      };
+    } else {
+      comparison = {
+        totalChecked: allColumnChecks.length,
+        matchCount: passedCount,
+        mismatchCount: failedCount,
+        matches: allColumnChecks.filter((r) => r.status === 'PASS').map((r) => ({ field: r.fieldName, expected: r.expected, actual: r.actual })),
+        mismatches: allColumnChecks.filter((r) => r.status === 'MISMATCH').map((r) => ({ field: r.fieldName, expected: r.expected, actual: r.actual, error: r.error })),
+        notFoundInAudit: [],
+        auditFieldCount: operationRowSnapshots.length,
+        passed: overallPassed,
+        reason: overallPassed
+          ? `Delete verified: All ${allColumnChecks.length} audit columns passed for ${operationRowSnapshots.length} row(s)`
+          : `Delete verification failed: ${failedCount} of ${allColumnChecks.length} audit columns mismatched`,
+        fieldValidationResults: allColumnChecks,
+        fieldValidationSummary: {
+          total: allColumnChecks.length,
+          passed: passedCount,
+          failed: failedCount,
+          expectedMissing: 0,
+          passedFields: allColumnChecks.filter((r) => r.status === 'PASS').map((r) => r.fieldName),
+          failedFields: allColumnChecks.filter((r) => r.status === 'MISMATCH').map((r) => r.fieldName),
+          missingFields: [],
+          expectedMissingFields: [],
+        },
+      };
+    }
+
+    if (!overallPassed) {
+      screenshotPath = await captureAuditScreenshot(reportContext, expected.masterName, expected.operation, 'audit-delete-column-mismatch').catch(() => '');
+    }
+  }
   // Capture proof screenshot for successful audit verification as well.
   if (!screenshotPath && analysis.missing.length === 0) {
     screenshotPath = await captureAuditScreenshot(reportContext, expected.masterName, expected.operation, 'audit-verified').catch(() => '');
@@ -2434,7 +2843,7 @@ async function verifyAuditTrailEntry(page, options) {
   // This MUST run here while reportContext (popup/tab) is still open, NOT from the
   // caller with the main page object.
   let fieldByFieldResults = null;
-  if (Object.keys(dashboardAuditTrail).length > 0) {
+  if (Object.keys(dashboardAuditTrail).length > 0 && expected.operation !== 'delete') {
     const recordID = expected.recordID || expected.identifiers[0] || '';
     fieldByFieldResults = await verifyEachFieldIndividually(reportContext, recordID, dashboardAuditTrail, {
       operation: expected.operation,
@@ -2469,6 +2878,8 @@ async function verifyAuditTrailEntry(page, options) {
     return status !== 'PASS' && status !== 'EXPECTED_MISSING';
   });
 
+  const resultReason = comparison?.reason || (verified ? 'Audit trail verified successfully' : '');
+
   return {
     verified,
     source: verificationSource,
@@ -2494,6 +2905,7 @@ async function verifyAuditTrailEntry(page, options) {
     comparison,
     screenshotPath,
     fieldByFieldResults,
+    reason: resultReason,
     // ──── FIELD VALIDATION RESULTS (from field-by-field) ────
     fieldValidationResults,
     fieldValidationSummary: {

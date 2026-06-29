@@ -186,5 +186,24 @@ export function getLastWorkflowRun() {
   return request('/api/template-workflow/last-run');
 }
 
+export function getLastPassedWorkflowRun() {
+  return request('/api/template-workflow/last-passed');
+}
+
+export function runTemplateDesign(payload = {}) {
+  return request('/api/template-design/run', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getTemplateDesignOptions(options = {}) {
+  const params = new URLSearchParams();
+  if (typeof options.showBrowser === 'boolean') {
+    params.set('showBrowser', String(options.showBrowser));
+  }
+  const query = params.toString();
+  return request(`/api/template-design/options${query ? `?${query}` : ''}`);
+}
 
 export { API_BASE_URL };

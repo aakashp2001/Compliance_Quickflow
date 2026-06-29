@@ -6,10 +6,14 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "migrate:json-to-mongo": "node scripts/migrate-json-to-mongo.js",
+    "migrate:json-to-mongo:dry": "node scripts/migrate-json-to-mongo.js --dry-run"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.1"
+    "dotenv": "^17.4.2",
+    "express": "^4.21.1",
+    "mongodb": "^7.2.0"
   }
 }

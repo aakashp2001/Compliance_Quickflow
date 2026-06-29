@@ -16,6 +16,11 @@ Key helper modules
 - `auditTrail.js` — helpers to query and verify audit trail entries for verification steps used in compliance tests.
 - `artifactOverlay.js` — utilities to render overlay metadata for captured screenshots.
 
+Notes about dependency mappings
+------------------------------
+
+The `smartFiller` helpers rely on parent/dependent dropdown mapping data. This configuration is now persisted in the backend `dependency_configs` MongoDB collection and exposed via the API (`GET /api/dependency-config`, `PUT /api/dependency-config/:masterName`). If you have a legacy `playwright-tests/helpers/dependent-dropdowns.json`, import it using `backend/scripts/migrate-json-to-mongo.js`.
+
 Usage pattern
 -------------
 

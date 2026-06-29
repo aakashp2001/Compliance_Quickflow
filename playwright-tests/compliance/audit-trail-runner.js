@@ -7,13 +7,14 @@ const path = require('path');
 const {
   openAuditTrailPage,
   fillAuditSearch: helperFillAuditSearch,
-} = require('../helpers/auditTrail');
+} = require('./compliance-audit-wrapper');
 const {
   login,
   clickOptionalYesConfirmation,
   getQuickFlowError,
   SEL,
 } = require('../helpers/uiActions');
+const { attachComplianceTraceability } = require('./compliance-traceability');
 
 const QT_URL = process.env.QT_URL || 'https://ipdev.quickflow.in/login';
 const QT_USER = process.env.QT_USER || 'admin';
@@ -39,7 +40,11 @@ function log(message) {
 }
 
 function emitResult(result) {
-  process.stdout.write(JSON.stringify(result));
+  const payload = attachComplianceTraceability(result, {
+    suite: 'AT',
+    runnerName: 'audit-trail-runner.js',
+  });
+  process.stdout.write(JSON.stringify(payload));
 }
 
 function baseCase(tcId, title, readiness = READINESS.AUTOMATABLE) {
@@ -195,6 +200,7 @@ async function openAuditLanding(page) {
     `${base}/Audit-Trails`,
     `${base}/Audit-Trail`,
     `${base}/AuditTrail`,
+    `${base}/Audit-History`,
     `${base}/report/viewer`,
   ];
 

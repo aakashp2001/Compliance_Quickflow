@@ -38,7 +38,7 @@ function defaultTextByField(fieldInfo, fallback = 'QA Entry') {
 
   if (/site\s*name/.test(label)) return `Ahmedabad QA Site ${randomStamp}`;
   if (/app\s*name|application\s*name/.test(label)) return `Quality Management App ${randomStamp}`;
-  if (/app\s*code|application\s*code/.test(label)) return String(100 + Math.floor(Math.random() * 900));
+  if (/app\s*code|application\s*code/.test(label)) return `${randomText(2).toUpperCase()}${randomDigits.slice(0,1)}`;
   if (/site\s*code|location\s*code|plant\s*code/.test(label)) return `ST${randomDigits.slice(0, 5)}`;
   if (/template\s*code|sub\s*template\s*code/.test(label)) return `TP${randomDigits.slice(0, 5)}`;
   if (/workflow\s*code/.test(label)) return `WF${randomDigits.slice(0, 5)}`;
@@ -1095,12 +1095,12 @@ async function fillField(page, idx, fieldInfo, existingValues = [], preferredVal
         });
       }, { rootSelector }).catch(() => {});
 
-      filledValue = await page.evaluate(({ idx, id, preferredValue, resolverSource }) => {
+      filledValue = await page.evaluate(({ idx, id, resolverSource }) => {
         const resolveRoot = new Function(`return (${resolverSource});`)();
         const root = resolveRoot({ idx, id });
         if (!root) return null;
 
-        // Collect all checkboxes; skip "Select All" or already-indeterminate master toggles
+        // Collect all checkboxes; skip "Select All" master toggles.
         const allCheckboxes = Array.from(root.querySelectorAll('input[type="checkbox"]'));
         const selectable = allCheckboxes.filter((cb) => {
           const label = (cb.closest('label, li, div')?.textContent || cb.id || cb.value || '').trim();
@@ -1108,15 +1108,6 @@ async function fillField(page, idx, fieldInfo, existingValues = [], preferredVal
         });
 
         if (!selectable.length) return null;
-
-        // Uncheck all first for a clean state
-        for (const cb of selectable) {
-          if (cb.checked) {
-            cb.checked = false;
-            cb.dispatchEvent(new Event('change', { bubbles: true }));
-            if (window.$) window.$(cb).trigger('change');
-          }
-        }
 
         const labels = [];
 
@@ -1126,8 +1117,8 @@ async function fillField(page, idx, fieldInfo, existingValues = [], preferredVal
           labels.push(label || 'checked');
         }
 
-        return labels.join(', ');
-      }, { idx, id, preferredValue, resolverSource: fieldRootResolverSource() });
+        return labels.length ? labels.join(', ') : null;
+      }, { idx, id, resolverSource: fieldRootResolverSource() });
 
       // Close only the local dropdown opener when possible; avoid Escape which can close the offcanvas.
       if (filledValue) {
@@ -1205,8 +1196,13 @@ async function fillOffcanvasForm(page, masterName) {
 
     const value = await fillField(page, idx, info, Object.values(auditTrail).map(String));
     if (value !== null && value !== undefined) {
-      auditTrail[columnToShow || displayName] = value;
-      console.log(`[FILL] Master "${masterName}" | Field "${displayName}" = "${value}"`);
+      const auditKey = String(columnToShow || displayName || id || '').trim();
+      if (!auditKey) {
+        console.log(`[FILL] Skipping unmapped field at index ${idx} (id="${id || ''}") with value "${value}"`);
+      } else {
+        auditTrail[auditKey] = value;
+        console.log(`[FILL] Master "${masterName}" | Field "${auditKey}" = "${value}"`);
+      }
     }
 
     await page.waitForTimeout(150);

@@ -3,7 +3,8 @@
 const { chromium } = require('@playwright/test');
 const path = require('path');
 const { fillOffcanvasForm } = require('../helpers/formFiller');
-const { verifyAuditTrailEntry } = require('../helpers/auditTrail');
+const { verifyAuditTrailEntryCompliance } = require('./compliance-audit-wrapper');
+const { attachComplianceTraceability } = require('./compliance-traceability');
 const {
   login,
   navigateTo,
@@ -38,7 +39,11 @@ function log(message) {
 }
 
 function emitResult(result) {
-  process.stdout.write(JSON.stringify(result));
+  const payload = attachComplianceTraceability(result, {
+    suite: 'MD',
+    runnerName: 'master-data-runner.js',
+  });
+  process.stdout.write(JSON.stringify(payload));
 }
 
 function baseCase(tcId, title, readiness) {
@@ -305,7 +310,7 @@ async function runTC_MD_01_01(page) {
 
   let auditResult = null;
   try {
-    auditResult = await verifyAuditTrailEntry(page, {
+    auditResult = await verifyAuditTrailEntryCompliance(page, {
       baseURL: new URL(page.url()).origin,
       masterName: QT_MASTER,
       operation: 'create',
@@ -393,7 +398,7 @@ async function runTC_MD_01_02(browser) {
     let auditCreate = null;
     let auditUpdate = null;
     try {
-      auditCreate = await verifyAuditTrailEntry(reviewerPage, {
+      auditCreate = await verifyAuditTrailEntryCompliance(reviewerPage, {
         baseURL: new URL(reviewerPage.url()).origin,
         masterName: QT_MASTER,
         operation: 'create',
@@ -407,7 +412,7 @@ async function runTC_MD_01_02(browser) {
     }
 
     try {
-      auditUpdate = await verifyAuditTrailEntry(reviewerPage, {
+      auditUpdate = await verifyAuditTrailEntryCompliance(reviewerPage, {
         baseURL: new URL(reviewerPage.url()).origin,
         masterName: QT_MASTER,
         operation: 'update',

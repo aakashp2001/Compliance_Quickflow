@@ -16,7 +16,7 @@ Here is a breakdown of how the compliance points were automated:
 1. **TC-DI-01-01 & 01-02 (Attributability):**
    - The test uses your existing `verifyAuditTrailEntry` helper to strictly enforce that the created/updated record is logged against the correct User ID and contains a valid timestamp.
 
-2. **TC-DI-02-01 & 02-02 (Legibility - Unicode & Long Strings):**
+2. **TC-DI-02 (Legibility - Unicode & Long Strings):**
    - We explicitly target a text input and fill it with `"Ärzte & Société"` and a massive 255-character string. The test then extracts the bound values to assert they are exactly byte-for-byte identical to the input (verifying no database truncation).
 
 3. **TC-DI-03-01 (Contemporaneous Timestamp):**

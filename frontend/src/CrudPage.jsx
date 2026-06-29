@@ -236,6 +236,7 @@ function CrudPage({ masters: propMasters = [] }) {
   const [loadingDependencyTable, setLoadingDependencyTable] = useState(false);
 
   const [operation, setOperation] = useState('create');
+  const [targetRecordName, setTargetRecordName] = useState('');
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState([]);
   const [resultsSaving, setResultsSaving] = useState(false);
@@ -583,6 +584,7 @@ function CrudPage({ masters: propMasters = [] }) {
           password: config.password,
           showBrowser: config.showBrowser,
           verifyAuditTrail: config.verifyAuditTrail,
+          targetRecordName: ['update', 'delete'].includes(operation) ? targetRecordName : undefined,
         });
 
         const crudOperationStatuses = buildOperationStatuses(data, operation, config.verifyAuditTrail);
@@ -679,7 +681,6 @@ function CrudPage({ masters: propMasters = [] }) {
           }
         }
       } catch { /* ignore */ }
-      // Fallback to localStorage
       try {
         const stored = localStorage.getItem('crudResults');
         if (stored) {
@@ -791,6 +792,19 @@ function CrudPage({ masters: propMasters = [] }) {
                   <option value="all">All (Create to Update to Delete)</option>
                 </select>
               </label>
+
+              {['update', 'delete'].includes(operation) && (
+                <label>
+                  Target Record Name (optional)
+                  <input
+                    type="text"
+                    value={targetRecordName}
+                    onChange={(e) => setTargetRecordName(e.target.value)}
+                    placeholder="Leave blank to use first record"
+                    disabled={running}
+                  />
+                </label>
+              )}
             </div>
 
             <div className="form-row dependency-row">

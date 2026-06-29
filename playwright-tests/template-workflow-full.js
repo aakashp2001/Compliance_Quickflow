@@ -2,12 +2,12 @@
 
 /**
  * template-workflow-full.js
- * Steps: Login → CreateApp → CreateSite → CreateTemplate → CreateSubTemplate
+ * Steps: Login → CreateSite → CreateApp → CreateTemplate → CreateSubTemplate
  *        → AssignWorkflow → SwitchAppUnderSite → VerifyAuditTrail
  */
 
 const { chromium } = require('@playwright/test');
-const { randomBytes, randomUUID } = require('crypto');
+const { randomBytes, randomUUID, randomInt } = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { smartFillOffcanvasForm } = require('./helpers/smartFiller');
@@ -56,6 +56,27 @@ function uniqueStamp(length = 16) {
 }
 
 function log(msg) { process.stderr.write(`[WORKFLOW] ${msg}\n`); }
+
+async function uploadAppIcon(page) {
+  const iconPath = path.resolve(__dirname, 'fixtures', 'app-icon.png');
+  if (!fs.existsSync(iconPath)) {
+    throw new Error(`App icon fixture not found: ${iconPath}`);
+  }
+
+  const fileInput = page.locator('.offcanvas.show input[type="file"], #masterFormOffcanvas.show input[type="file"], #offcanvas.show input[type="file"], input[type="file"]').first();
+  const hasFileInput = await fileInput.count().catch(() => 0);
+  if (!hasFileInput) {
+    log('[APP-ICON] No file input found in Create-App form');
+    return false;
+  }
+
+  await fileInput.setInputFiles(iconPath).catch(async () => {
+    await fileInput.setInputFiles([{ name: 'app-icon.png', mimeType: 'image/png', buffer: fs.readFileSync(iconPath) }]);
+  });
+  await page.waitForTimeout(500);
+  log('[APP-ICON] Uploaded placeholder app icon');
+  return true;
+}
 
 async function captureStepFailureScreenshot(page, stepKey) {
   try {
@@ -194,24 +215,29 @@ async function fetchExistingValuesFromDashboard(page, fieldLabel) {
       
       // Check if there's a next page
       const hasNextPage = await page.evaluate(() => {
-        // Look for Next button or pagination
-        const nextBtn = document.querySelector('a:contains("Next"), button:contains("Next"), [aria-label*="Next"]');
-        if (nextBtn && !nextBtn.disabled && !nextBtn.classList.contains('disabled')) return true;
-        
-        // Try DataTables pagination
-        const paginate = document.querySelector('.dataTables_paginate');
-        if (paginate) {
-          const nextLink = paginate.querySelector('a.next:not(.disabled)');
-          if (nextLink) return true;
+        const isEnabled = (el) => {
+          if (!el) return false;
+          if (el.disabled) return false;
+          const cls = String(el.className || '').toLowerCase();
+          if (cls.includes('disabled')) return false;
+          if (el.getAttribute('aria-disabled') === 'true') return false;
+          return true;
+        };
+
+        // DataTables next
+        const dtNext = document.querySelector('.dataTables_paginate a.next, .dataTables_paginate li.next a');
+        if (isEnabled(dtNext)) return true;
+
+        // Generic pagination anchors/buttons with "next" text or aria-label
+        const controls = Array.from(document.querySelectorAll('a, button'));
+        for (const el of controls) {
+          const txt = (el.textContent || '').trim().toLowerCase();
+          const aria = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+          if (txt === 'next' || txt === '>' || txt === '>>' || aria.includes('next')) {
+            if (isEnabled(el)) return true;
+          }
         }
-        
-        // Try Bootstrap pagination
-        const pagination = document.querySelector('ul.pagination, nav[aria-label="Page navigation"]');
-        if (pagination) {
-          const nextItem = pagination.querySelector('li:last-child:not(.disabled) a, li:has(> a[aria-label*="Next"]) a');
-          if (nextItem) return true;
-        }
-        
+
         return false;
       }).catch(() => false);
       
@@ -222,21 +248,36 @@ async function fetchExistingValuesFromDashboard(page, fieldLabel) {
       
       // Click next page button
       const nextClicked = await page.evaluate(() => {
-        // Try DataTables next
-        const nextLink = document.querySelector('.dataTables_paginate a.next:not(.disabled)');
-        if (nextLink) { nextLink.click(); return true; }
-        
-        // Try Bootstrap pagination next
-        const pagination = document.querySelector('ul.pagination');
-        if (pagination) {
-          const nextItem = pagination.querySelector('li:last-child:not(.disabled) a');
-          if (nextItem) { nextItem.click(); return true; }
+        const isEnabled = (el) => {
+          if (!el) return false;
+          if (el.disabled) return false;
+          const cls = String(el.className || '').toLowerCase();
+          if (cls.includes('disabled')) return false;
+          if (el.getAttribute('aria-disabled') === 'true') return false;
+          return true;
+        };
+
+        const clickIfEnabled = (el) => {
+          if (!isEnabled(el)) return false;
+          el.click();
+          return true;
+        };
+
+        // DataTables next
+        if (clickIfEnabled(document.querySelector('.dataTables_paginate a.next, .dataTables_paginate li.next a'))) {
+          return true;
         }
-        
-        // Try aria-label next
-        const ariaNext = document.querySelector('[aria-label*="Next"]');
-        if (ariaNext && !ariaNext.disabled) { ariaNext.click(); return true; }
-        
+
+        // Generic pagination anchors/buttons with "next" text or aria-label
+        const controls = Array.from(document.querySelectorAll('a, button'));
+        for (const el of controls) {
+          const txt = (el.textContent || '').trim().toLowerCase();
+          const aria = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+          if (txt === 'next' || txt === '>' || txt === '>>' || aria.includes('next')) {
+            if (clickIfEnabled(el)) return true;
+          }
+        }
+
         return false;
       }).catch(() => false);
       
@@ -286,6 +327,68 @@ function generateUniqueValue(baseValue, existingValues, attemptNum = 1) {
   }
   // Fallback: use a full fresh GUID fragment instead of reusing any earlier name/id.
   return uniqueStamp(20);
+}
+
+const ALNUM_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function alnumToken(length) {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += ALNUM_CHARS[randomInt(0, ALNUM_CHARS.length)];
+  }
+  return out;
+}
+
+/**
+ * Generates a code that fits within the form field's maxLength and isn't in the
+ * dashboard blocklist. The server validates the truncated value, so we must
+ * size the candidate to what actually gets submitted. Uses the full 36-char
+ * alphanumeric alphabet so tiny maxLength fields have enough headroom.
+ */
+function generateUniqueCode(prefix, maxLength, blocklist) {
+  const cleanBlock = new Set((blocklist || []).map((v) => String(v || '').trim().toUpperCase()).filter(Boolean));
+  const effectiveMax = Number.isFinite(maxLength) && maxLength > 0 ? maxLength : 0;
+  const baseTokenLen = effectiveMax > prefix.length ? effectiveMax - prefix.length : 8;
+  const tokenLen = Math.max(1, baseTokenLen);
+  for (let i = 0; i < 200; i++) {
+    const token = alnumToken(tokenLen);
+    let candidate = `${prefix}${token}`;
+    if (effectiveMax > 0) candidate = candidate.slice(0, effectiveMax);
+    if (!cleanBlock.has(candidate.toUpperCase())) return candidate;
+  }
+  // Blocklist appears saturated within field constraints; emit a random tail anyway.
+  const token = alnumToken(tokenLen);
+  let candidate = `${prefix}${token}`;
+  if (effectiveMax > 0) candidate = candidate.slice(0, effectiveMax);
+  return candidate;
+}
+
+/**
+ * Pulls a quoted code (e.g. `'APC'`, "APC", `APC`) out of a server error
+ * message like "The application code 'APC' already exists in the system."
+ * so we can add the conflicting value to the local blocklist without a
+ * dashboard re-fetch.
+ */
+function extractCodeFromError(errorMsg) {
+  const msg = String(errorMsg || '');
+  let m = msg.match(/['"`]([A-Za-z0-9_-]+)['"`]\s+already\s+(?:exists|in\s+use)/i);
+  if (m) return m[1];
+  m = msg.match(/code\s+['"`]?([A-Za-z0-9_-]+)['"`]?\s+already/i);
+  if (m) return m[1];
+  return '';
+}
+
+function findFieldMaxLength(fields, patterns) {
+  if (!Array.isArray(fields) || !patterns) return 0;
+  const regexes = Array.isArray(patterns) ? patterns : [patterns];
+  for (const field of fields) {
+    const label = `${field.displayName || ''} ${field.columnToShow || ''} ${field.id || ''}`;
+    if (regexes.some((rx) => rx.test(label))) {
+      const ml = Number(field.maxLength || 0);
+      if (ml > 0) return ml;
+    }
+  }
+  return 0;
 }
 
 async function verifyRecentlyCreatedEntry(page, routes, expectedText, entityLabel = 'record') {
@@ -364,6 +467,45 @@ async function dismissOverlays(page) {
   }
 }
 
+async function closeOpenDropdown(page, input = null) {
+  if (input) {
+    await input.blur().catch(() => {});
+  }
+  await page.evaluate(() => {
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+  }).catch(() => {});
+
+  const safePageTarget = page.locator(
+    '.pageTitle:visible, .page-title:visible, [class*="pageTitle"]:visible, h1:visible, h2:visible'
+  ).first();
+  if (await safePageTarget.isVisible({ timeout: 300 }).catch(() => false)) {
+    await safePageTarget.click({ force: true }).catch(() => {});
+  }
+  await page.waitForTimeout(250);
+}
+
+async function getVisibleDropdownSnapshot(page) {
+  return await page.evaluate(() => {
+    const isVis = (el) => {
+      if (!el) return false;
+      const s = getComputedStyle(el);
+      return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null;
+    };
+    const options = Array.from(document.querySelectorAll('.react-select__option, [role="option"], .select2-results__option'))
+      .filter(isVis)
+      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .filter((text, idx, arr) => arr.indexOf(text) === idx);
+    const notices = Array.from(document.querySelectorAll('.react-select__menu-notice, [class*="menu-notice"]'))
+      .filter(isVis)
+      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return { options, notices };
+  }).catch(() => ({ options: [], notices: [] }));
+}
+
 async function openCreateForm(page) {
   const offSel = '.offcanvas.show .offcanvas-body, #masterFormOffcanvas .offcanvas-body, #offcanvas.show .offcanvas-body';
   const offcanvas = page.locator(offSel).first();
@@ -426,6 +568,41 @@ async function saveOffcanvas(page) {
 
   const offcanvasSel = '.offcanvas.show, #masterFormOffcanvas.show, #offcanvas.show';
 
+  let saveRequestFired = false;
+  let saveResponseOk = false;
+  let saveResponseStatus = 0;
+  let saveResponseError = '';
+  let saveRequestInfo = null;
+
+  const onRequest = (request) => {
+    try {
+      const method = String(request.method() || '').toUpperCase();
+      const resourceType = String(request.resourceType() || '').toLowerCase();
+      if (!['POST', 'PUT', 'PATCH'].includes(method)) return;
+      if (!['xhr', 'fetch'].includes(resourceType)) return;
+      saveRequestFired = true;
+      saveRequestInfo = {
+        url: request.url(),
+        method,
+      };
+    } catch {}
+  };
+
+  const onResponse = async (response) => {
+    try {
+      if (!saveRequestInfo) return;
+      if (response.url() !== saveRequestInfo.url) return;
+      saveResponseStatus = Number(response.status() || 0);
+      saveResponseOk = response.ok();
+      if (!saveResponseOk) {
+        saveResponseError = await response.text().catch(() => '');
+      }
+    } catch {}
+  };
+
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+
   const candidates = [
     page.locator('#btnSave:visible:not([disabled])').first(),
     page.locator('#btnSubmit:visible:not([disabled])').first(),
@@ -467,44 +644,128 @@ async function saveOffcanvas(page) {
 
   if (!clicked) throw new Error('Save button not found in offcanvas');
 
-  // ── Wait for save to complete ────────────────────────────────────────────────
-  // Primary signal: offcanvas closes → record was saved successfully
-  const offcanvasClosed = await page
-    .waitForSelector(offcanvasSel, { state: 'hidden', timeout: 8000 })
-    .then(() => true)
-    .catch(() => false);
+  let matchedMessage = '';
+  let outcomeError = '';
+  let successfulApiSeenAt = 0;
+  const maxOutcomeWaitMs = 30000;
+  const pollMs = 250;
+  let lastSnapshot = { visibleMessages: [], allMessages: [], validationText: '', formOpen: true, savingInProgress: false };
 
-  // Read any toast/alert message for diagnostics
-  await page.waitForTimeout(500);
-  await dismissOverlays(page);
-  const toastMsg = await page.evaluate(() => {
-    for (const n of document.querySelectorAll('.swal2-title,.swal2-html-container,.toast-message,[role="alert"],.alert-success,.alert-danger,.Toastify__toast-body')) {
-      const t = (n.textContent || '').trim();
-      if (t) return t;
+  try {
+    for (let waited = 0; waited < maxOutcomeWaitMs; waited += pollMs) {
+      await page.waitForTimeout(pollMs);
+
+      const snapshot = await page.evaluate((selector) => {
+        const read = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+        const isVisible = (el) => {
+          if (!el) return false;
+          const style = getComputedStyle(el);
+          return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+        };
+
+        const messages = [];
+        document.querySelectorAll('.swal2-title,.swal2-html-container,.swal2-content,.toast-message,[role="alert"],.alert,.alert-success,.alert-danger,.Toastify__toast,.Toastify__toast-body').forEach((node) => {
+          const text = read(node);
+          if (text) messages.push({ text, visible: isVisible(node) });
+        });
+
+        const validation = [];
+        document.querySelectorAll('.invalid-feedback, .text-danger, .field-error, .fv-plugins-message-container').forEach((node) => {
+          if (!isVisible(node)) return;
+          const text = read(node);
+          if (text) validation.push(text);
+        });
+
+        const formOpen = !!document.querySelector(selector);
+        const savingInProgress = Array.from(document.querySelectorAll(`${selector} button, ${selector} .btn`)).some((btn) => {
+          if (!isVisible(btn)) return false;
+          const txt = read(btn).toLowerCase();
+          const cls = String(btn.className || '').toLowerCase();
+          return txt.includes('saving') || cls.includes('loading') || cls.includes('spinner');
+        });
+
+        return {
+          visibleMessages: messages.filter((item) => item.visible).map((item) => item.text),
+          allMessages: messages.map((item) => item.text),
+          validationText: Array.from(new Set(validation)).join('; '),
+          formOpen,
+          savingInProgress,
+        };
+      }, offcanvasSel).catch(() => ({ visibleMessages: [], allMessages: [], validationText: '', formOpen: true, savingInProgress: false }));
+      lastSnapshot = snapshot;
+
+      const successMsg = snapshot.allMessages.find((msg) => /success|saved successfully|created successfully|record saved|record created|data saved successfully/i.test(msg));
+      if (successMsg) {
+        matchedMessage = successMsg;
+        break;
+      }
+
+      const hardErrorMsg = snapshot.visibleMessages.find((msg) => {
+        const lower = String(msg || '').toLowerCase();
+        if (/(are you sure|confirm|yes|ok|cancel)/i.test(lower)) return false;
+        return /error|failed|unable|already exists|duplicate|invalid|required|mandatory/.test(lower);
+      });
+      if (hardErrorMsg) {
+        outcomeError = `Save failed with message: ${hardErrorMsg}`;
+        break;
+      }
+
+      if (snapshot.validationText && !saveRequestFired) {
+        outcomeError = `Save blocked by validation errors: ${snapshot.validationText}`;
+        break;
+      }
+
+      if (saveRequestFired && !snapshot.formOpen) {
+        matchedMessage = 'Saved successfully (form closed after request)';
+        break;
+      }
+
+      if (saveRequestFired && saveResponseOk && !snapshot.validationText && !hardErrorMsg) {
+        if (!successfulApiSeenAt) successfulApiSeenAt = Date.now();
+        if (Date.now() - successfulApiSeenAt >= 900) {
+          matchedMessage = 'Saved successfully (API response succeeded)';
+          break;
+        }
+      }
+
+      if (saveRequestFired && saveResponseStatus && !saveResponseOk) {
+        const detail = saveResponseError ? ` - ${saveResponseError}` : '';
+        outcomeError = `Save API failed: ${saveRequestInfo?.url || 'unknown url'} (status ${saveResponseStatus})${detail}`;
+        break;
+      }
+
+      // If UI clearly indicates save is still in progress, keep waiting until max timeout.
+      if (snapshot.savingInProgress) {
+        continue;
+      }
     }
-    return '';
-  }).catch(() => '');
-
-  // ── Determine success / failure ──────────────────────────────────────────────
-  const isErrorMsg = /error|fail|invalid|required|mandatory|duplicate|already exist/i.test(toastMsg);
-
-  if (isErrorMsg) {
-    throw new Error(`Save rejected by server: "${toastMsg}"`);
+  } finally {
+    page.off('request', onRequest);
+    page.off('response', onResponse);
   }
 
-  if (!offcanvasClosed) {
-    // If the offcanvas is still showing AND we have no success message, treat as failure
-    const isSuccessMsg = /saved|success|created|added/i.test(toastMsg);
-    if (!isSuccessMsg) {
-      throw new Error(`Save did not complete — offcanvas still open${toastMsg ? ` ("${toastMsg}")` : '. Check for validation errors.'}`);
-    }
-    // Some apps show a success toast without closing the offcanvas — allow it
-    log(`[SAVE] Offcanvas still open but success message detected: "${toastMsg}"`);
+  if (outcomeError) {
+    throw new Error(outcomeError);
   }
 
-  const msg = toastMsg || 'Saved';
-  log(`[SAVE] ✅ ${msg}`);
-  return msg;
+  if (!matchedMessage) {
+    const formStillOpen = await page.locator(offcanvasSel).first().isVisible().catch(() => false);
+    if (!formStillOpen) {
+      matchedMessage = saveRequestFired
+        ? 'Saved successfully (form closed after request)'
+        : 'Form closed (assumed success)';
+    } else {
+      const requestInfo = saveRequestInfo?.url ? ` request=${saveRequestInfo.method || 'POST'} ${saveRequestInfo.url}` : ' request=none';
+      const responseInfo = saveResponseStatus ? ` responseStatus=${saveResponseStatus}` : ' responseStatus=none';
+      const savingInfo = lastSnapshot?.savingInProgress ? ' savingState=active' : ' savingState=inactive';
+      const validationInfo = lastSnapshot?.validationText ? ` validation="${lastSnapshot.validationText}"` : '';
+      throw new Error(`Save did not complete — offcanvas still open.${requestInfo}${responseInfo}${savingInfo}${validationInfo}`);
+    }
+  }
+
+  await dismissOverlays(page).catch(() => {});
+  log(`[SAVE] ✅ ${matchedMessage}`);
+  return matchedMessage;
 }
 
 
@@ -602,7 +863,8 @@ async function forceSelectInOffcanvas(page, targetText, fieldHint = '', strict =
       await input.fill('').catch(() => {});
       await input.type(targetText, { delay: 25 }).catch(() => {});
     }
-    await page.waitForTimeout(800);
+    // Wait longer for async-loaded dropdown options to arrive from server
+    await page.waitForTimeout(1200);
 
     // Get all visible options
     const options = await page.evaluate((tgt) => {
@@ -641,8 +903,18 @@ async function forceSelectInOffcanvas(page, targetText, fieldHint = '', strict =
       return options.match;
     }
 
-    // This dropdown didn't have the value — close it and move on
-    await page.keyboard.press('Escape').catch(() => {});
+    // This dropdown didn't have the value — close it WITHOUT pressing Escape
+    // ⚠️ IMPORTANT: The app's OffCanvas.jsx listens for 'Escape' globally and closes the ENTIRE
+    // offcanvas panel when Escape is pressed — so we must NEVER use Escape to dismiss a dropdown.
+    // Instead, click on the offcanvas header/title area which is a safe non-interactive zone.
+    const safeClickTarget = page.locator('.offcanvas.show .offcanvas-header h5, .offcanvas.show .offcanvas-title, #masterFormOffcanvas.show .offcanvas-header h5').first();
+    const hasSafeTarget = await safeClickTarget.isVisible({ timeout: 500 }).catch(() => false);
+    if (hasSafeTarget) {
+      await safeClickTarget.click({ force: true }).catch(() => {});
+    } else {
+      // Fallback: blur the input instead of pressing Escape
+      await input.blur().catch(() => {});
+    }
     await page.waitForTimeout(300);
     log(`[FORCE-SELECT] Not found in input "${inputMeta.id}" (options: ${options.all.join(', ') || 'No options available'})`);
   }
@@ -788,39 +1060,103 @@ async function stepCreateSite(page, flowState) {
  *   3. Evaluates the DOM to find and click it
  */
 async function selectSiteByRadio(page, siteName) {
-  log(`[RADIO-SELECT] Looking for Site radio: "${siteName}"`);
+  log(`[RADIO-SELECT] Looking for Site checkbox: "${siteName}"`);
   const norm = (s) => String(s || '').trim().toLowerCase();
   const siteNorm = norm(siteName);
 
-  // Strategy 1: row in a table contains the siteName → click the radio in that row
+  // PRE-STEP: uncheck any already-checked sites. App master site_id is a checkboxlist —
+  // leftover defaults cause the app to be linked to wrong sites (DB shows site_id="76,80,110"
+  // never containing the new site). We want ONLY the new site to remain checked.
+  const uncheckedCount = await page.evaluate(() => {
+    const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+    if (!oc) return 0;
+    const checked = Array.from(oc.querySelectorAll('input[type="checkbox"]:checked'))
+      .filter((el) => {
+        const row = el.closest('tr, .form-check, label');
+        if (!row) return false;
+        const txt = (row.textContent || '').trim();
+        return txt.length >= 2;
+      });
+    let n = 0;
+    for (const cb of checked) { try { cb.click(); n++; } catch {} }
+    return n;
+  }).catch(() => 0);
+  if (uncheckedCount > 0) {
+    log(`[RADIO-SELECT] Pre-unchecked ${uncheckedCount} existing site checkbox(es)`);
+    await page.waitForTimeout(300);
+  }
+
+  // Strategy 0: if offcanvas has a search input above the site list, filter by siteName first.
+  // The App form's site list is paginated/searchable — without filtering, the new site may
+  // be on a later page and never become a visible row.
+  const searchInput = page.locator(
+    '.offcanvas.show input[type="search"]:visible, .offcanvas.show input[placeholder*="search" i]:visible, .offcanvas.show input[placeholder*="Search" i]:visible, #offcanvas.show input[type="search"]:visible'
+  ).first();
+  if (await searchInput.isVisible({ timeout: 500 }).catch(() => false)) {
+    try {
+      await searchInput.fill('');
+      await searchInput.type(siteName, { delay: 20 });
+      await page.waitForTimeout(800);
+      log(`[RADIO-SELECT] Filtered site list with "${siteName}"`);
+    } catch {}
+  }
+
+  const verifyChecked = async () => {
+    return await page.evaluate((target) => {
+      const norm = (s) => String(s || '').trim().toLowerCase();
+      const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+      if (!oc) return false;
+      const rows = Array.from(oc.querySelectorAll('tr, label, .form-check'));
+      for (const r of rows) {
+        if (!norm(r.textContent || '').includes(norm(target))) continue;
+        const input = r.querySelector('input[type="radio"], input[type="checkbox"]');
+        if (input && input.checked) return true;
+      }
+      return false;
+    }, siteName).catch(() => false);
+  };
+
+  if (await verifyChecked()) {
+    log(`[RADIO-SELECT] ✅ Already selected: "${siteName}"`);
+    return true;
+  }
+
+  // Strategy 1: row in a table contains the siteName → click the input in that row, verify checked
   const rowWithSite = page.locator(
     '.offcanvas.show tr:visible, #offcanvas.show tr:visible, #masterFormOffcanvas.show tr:visible'
   ).filter({ hasText: siteName }).first();
 
   if (await rowWithSite.isVisible().catch(() => false)) {
-    const radioInRow = rowWithSite.locator('input[type="radio"]').first();
-    if (await radioInRow.isVisible().catch(() => false)) {
-      await radioInRow.click({ force: true }).catch(() => {});
+    const inputInRow = rowWithSite.locator('input[type="radio"], input[type="checkbox"]').first();
+    if (await inputInRow.isVisible().catch(() => false)) {
+      await inputInRow.scrollIntoViewIfNeeded().catch(() => {});
+      await inputInRow.click({ force: true }).catch(() => {});
       await page.waitForTimeout(400);
-      log(`[RADIO-SELECT] ✅ Clicked radio in table row for "${siteName}"`);
-      return true;
+      if (await verifyChecked()) {
+        log(`[RADIO-SELECT] ✅ Verified checked: row input for "${siteName}"`);
+        return true;
+      }
+      // Try click on the label/cell instead
+      await rowWithSite.locator('td, label').first().click({ force: true }).catch(() => {});
+      await page.waitForTimeout(400);
+      if (await verifyChecked()) {
+        log(`[RADIO-SELECT] ✅ Verified checked after row-cell click for "${siteName}"`);
+        return true;
+      }
     }
-    // Click the row itself (sometimes the row is the clickable element)
-    await rowWithSite.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(400);
-    log(`[RADIO-SELECT] ✅ Clicked table row for "${siteName}"`);
-    return true;
   }
 
-  // Strategy 2: label whose text matches siteName
+  // Strategy 2: label whose text matches siteName, verify checked
   const labelMatch = page.locator(
     '.offcanvas.show label:visible, #offcanvas.show label:visible'
   ).filter({ hasText: siteName }).first();
   if (await labelMatch.isVisible().catch(() => false)) {
     await labelMatch.click({ force: true }).catch(() => {});
     await page.waitForTimeout(400);
-    log(`[RADIO-SELECT] ✅ Clicked label for "${siteName}"`);
-    return true;
+    if (await verifyChecked()) {
+      log(`[RADIO-SELECT] ✅ Verified checked: label for "${siteName}"`);
+      return true;
+    }
   }
 
   // Strategy 3: evaluate DOM — find radio whose adjacent text matches
@@ -856,11 +1192,14 @@ async function selectSiteByRadio(page, siteName) {
 
   if (clicked) {
     await page.waitForTimeout(400);
-    log(`[RADIO-SELECT] ✅ Selected via DOM evaluation for "${siteName}"`);
-    return true;
+    if (await verifyChecked()) {
+      log(`[RADIO-SELECT] ✅ Verified checked: DOM evaluation for "${siteName}"`);
+      return true;
+    }
+    log(`[RADIO-SELECT] ⚠️ DOM click did not result in checked state for "${siteName}"`);
   }
 
-  log(`[RADIO-SELECT] ⚠️ Could not find radio button for "${siteName}" — site may not appear in list yet`);
+  log(`[RADIO-SELECT] ⚠️ Could not select site "${siteName}" — site may not appear in list yet`);
   return false;
 }
 
@@ -868,21 +1207,34 @@ async function selectSiteByRadio(page, siteName) {
 async function stepCreateApp(page, flowState) {
   log('Step 3: Create App');
   if (!flowState.siteName) throw new Error('Cannot create App: siteName not set from Step 2');
-  
+
+  // Strict flow guard: App creation must use the Site created in this same run.
+  const siteExists = await verifyRecentlyCreatedEntry(page, '/Site', flowState.siteName, 'Site pre-check for App creation');
+  if (!siteExists) {
+    throw new Error(`Cannot create App: created Site "${flowState.siteName}" was not found in Site listing.`);
+  }
+
   let stamp = RUN_STAMP;
+  let existingNames = [];
+  let existingCodes = [];
+  let dashboardFetched = false;
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       if (attempt > 0) {
         log(`[STEP3] Retry attempt ${attempt + 1} for App creation`);
         await page.waitForTimeout(2000);
-        if (attempt > 1) {
-          stamp = generateRetryStamp(attempt);
-          log(`[STEP3] Generated new stamp for retry: ${stamp}`);
-        }
+        stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
+        log(`[STEP3] Generated new stamp for retry: ${stamp}`);
         await dismissOverlays(page).catch(() => {});
       }
 
       const appName = `AUTO-APP-${stamp}`;
+      if (existingNames.length > 0 && isValueTaken(appName, existingNames)) {
+        log(`[STEP3] Candidate App Name "${appName}" already exists in dashboard cache, retrying with new stamp`);
+        stamp = generateUniqueValue(generateRetryStamp(attempt + 1), existingNames, attempt + 1);
+        continue;
+      }
+
       await navigateTo(page, '/Create-App');
       await openCreateForm(page);
 
@@ -895,16 +1247,46 @@ async function stepCreateApp(page, flowState) {
       }
       await page.waitForTimeout(600);
 
-      // Fill remaining fields via smartFiller (site radio already selected above)
-      const audit = await smartFillOffcanvasForm(page, 'Create-App', null, {
+      // Fill remaining fields via smartFiller (site checkbox already selected above).
+      // Exclude App Icon because this form requires a real file upload, not plain text.
+      const discoveredFields = await require('./helpers/formDiscovery').collectStableFormFields(page);
+      const appFields = discoveredFields.filter((field) => {
+        const label = String(field.displayName || field.id || '');
+        if (/app\s*icon/i.test(label)) return false;
+        // Site is selected explicitly above. The generic checkbox filler can clear
+        // existing checkbox selections, which breaks the Site -> App relationship.
+        if (field.elementType === 'checkbox' && /^site$/i.test(label.trim())) return false;
+        return true;
+      });
+      const appCodeMaxLen = findFieldMaxLength(appFields, [/app\s*code/i, /^code$/i]);
+      const shortNameMaxLen = findFieldMaxLength(appFields, [/short\s*name/i]);
+      // App Code field is iMaxLength=3 per the master form seed — a 2-char "AP" prefix
+      // leaves only 36 distinct codes, which the dashboard already saturates. Drop the
+      // prefix here so we have the full 36^3 = 46656 alphanumeric space to draw from.
+      const appCodePrefix = appCodeMaxLen > 0 && appCodeMaxLen <= 4 ? '' : 'AP';
+      const shortNamePrefix = shortNameMaxLen > 0 && shortNameMaxLen <= 4 ? '' : 'AS';
+      const appCode = generateUniqueCode(appCodePrefix, appCodeMaxLen, existingCodes);
+      const shortName = generateUniqueCode(shortNamePrefix, shortNameMaxLen, existingCodes);
+      log(`[STEP3] App Code maxLength=${appCodeMaxLen || 'n/a'} → "${appCode}"; Short Name maxLength=${shortNameMaxLen || 'n/a'} → "${shortName}"`);
+      const audit = await smartFillOffcanvasForm(page, 'Create-App', appFields, {
         mode: 'create',
         prefilledValues: {
           Name: appName, 'App Name': appName,
-          'App Code': codeFromStamp('AP', stamp), 'Short Name': codeFromStamp('AS', stamp, 6), Code: codeFromStamp('AP', stamp),
-          Site: flowState.siteName, 'Site Name': flowState.siteName,
+          'App Code': appCode, 'Short Name': shortName, Code: appCode,
           'Form Submission To': 'Role',
         },
       });
+
+      log(`[STEP3] Re-confirming Site "${flowState.siteName}" before App save`);
+      const siteStillSelected = await selectSiteByRadio(page, flowState.siteName);
+      if (!siteStillSelected) {
+        throw new Error(`[STEP3] Site "${flowState.siteName}" was not selected before saving App.`);
+      }
+      await page.waitForTimeout(400);
+
+      log('[STEP3] Uploading App Icon');
+      await uploadAppIcon(page);
+      await page.waitForTimeout(300);
 
       // Mandatory business rule: App creation must use Form Submission To = Role.
       // Re-apply after smart filler so any auto-selection gets corrected.
@@ -923,21 +1305,25 @@ async function stepCreateApp(page, flowState) {
       const dupField = extractDuplicateFieldFromError(err.message);
       
       if (isDuplicate && attempt < 4) {
-        log(`[STEP3] Duplicate detected on field "${dupField || 'unknown'}" (attempt ${attempt + 1}) — will fetch dashboard and retry: ${err.message}`);
-        
-        // On first duplicate, fetch existing values
-        if (attempt === 1) {
+        log(`[STEP3] Duplicate detected on field "${dupField || 'unknown'}" (attempt ${attempt + 1}): ${err.message}`);
+
+        const collidingCode = extractCodeFromError(err.message);
+        if (collidingCode && !existingCodes.includes(collidingCode)) {
+          existingCodes.push(collidingCode);
+          log(`[STEP3] Added "${collidingCode}" to local code blocklist (now ${existingCodes.length} entries)`);
+        }
+
+        if (!dashboardFetched) {
           try {
             await navigateTo(page, '/Create-App');
             await page.waitForTimeout(1000);
-            const existingNames = await fetchExistingValuesFromDashboard(page, 'App Name');
-            const existingCodes = await fetchExistingValuesFromDashboard(page, 'App Code');
-            
-            if (existingNames.length > 0 || existingCodes.length > 0) {
-              // Generate new app name/code that doesn't conflict
-              stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
-              log(`[STEP3] Generated new stamp based on dashboard values: ${stamp}`);
+            existingNames = await fetchExistingValuesFromDashboard(page, 'App Name');
+            const fetchedCodes = await fetchExistingValuesFromDashboard(page, 'App Code');
+            for (const code of fetchedCodes) {
+              if (!existingCodes.includes(code)) existingCodes.push(code);
             }
+            dashboardFetched = true;
+            log(`[STEP3] Fetched ${existingNames.length} existing names, ${existingCodes.length} existing codes`);
           } catch (err2) {
             log(`[STEP3] Could not fetch dashboard values: ${err2.message}`);
           }
@@ -953,24 +1339,37 @@ async function stepCreateApp(page, flowState) {
 async function stepCreateTemplate(page, flowState) {
   log('Step 4: Create Template');
   if (!flowState.appName) throw new Error('Cannot create Template: appName not set from Step 3');
-  
+
   let stamp = RUN_STAMP;
+  let existingNames = [];
+  let existingCodes = [];
+  let dashboardFetched = false;
   for (let attempt = 0; attempt < 5; attempt++) {
     let audit = {}, ok = false;
     try {
       if (attempt > 0) {
         log(`[STEP4] Retry attempt ${attempt + 1} for Template creation`);
         await page.waitForTimeout(2000);
-        if (attempt > 1) {
-          stamp = generateRetryStamp(attempt);
-          log(`[STEP4] Generated new stamp for retry: ${stamp}`);
-        }
+        stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
+        log(`[STEP4] Generated new stamp for retry: ${stamp}`);
         await dismissOverlays(page).catch(() => {});
       }
 
       const tplName = `AUTO-TPL-${stamp}`;
+      if (existingNames.length > 0 && isValueTaken(tplName, existingNames)) {
+        log(`[STEP4] Candidate Template Name "${tplName}" already exists in dashboard cache, retrying with new stamp`);
+        stamp = generateUniqueValue(generateRetryStamp(attempt + 1), existingNames, attempt + 1);
+        continue;
+      }
+
       await navigateTo(page, '/Create-Template');
       await openCreateForm(page);
+
+      const discoveredFields = await require('./helpers/formDiscovery').collectStableFormFields(page);
+      const templateCodeMaxLen = findFieldMaxLength(discoveredFields, [/template\s*code/i, /^code$/i]);
+      const templateCodePrefix = templateCodeMaxLen > 0 && templateCodeMaxLen <= 4 ? '' : 'TP';
+      const templateCode = generateUniqueCode(templateCodePrefix, templateCodeMaxLen, existingCodes);
+      log(`[STEP4] Template Code maxLength=${templateCodeMaxLen || 'n/a'} -> "${templateCode}"`);
 
       for (let innerAttempt = 0; innerAttempt < 2 && !ok; innerAttempt++) {
         try {
@@ -983,15 +1382,27 @@ async function stepCreateTemplate(page, flowState) {
           audit = await smartFillOffcanvasForm(page, 'Create-Template', null, {
             mode: 'create',
             prefilledValues: {
-              Name: tplName, 'Template Name': tplName, 'Template Code': codeFromStamp('TP', stamp),
+              Name: tplName, 'Template Name': tplName, 'Template Code': templateCode, Code: templateCode,
               App: flowState.appName, Application: flowState.appName, 'App Name': flowState.appName,
             },
           });
 
-          // ✅ MANDATORY pass 2: re-confirm App AFTER smartFiller overrides
-          log(`[STEP4] Re-confirming App "${flowState.appName}" after smartFiller`);
-          await forceSelectInOffcanvas(page, flowState.appName, 'App re-confirm', true);
-          await page.waitForTimeout(500);
+          // Re-confirm App AFTER smartFiller — only if dropdown lost the value
+          const appAlreadySet = await page.evaluate((expected) => {
+            const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+            if (!oc) return false;
+            const singleValues = Array.from(oc.querySelectorAll('.react-select__single-value, [class*="singleValue"]'));
+            const exp = String(expected || '').trim().toLowerCase();
+            return singleValues.some(n => (n.textContent || '').trim().toLowerCase() === exp);
+          }, flowState.appName).catch(() => false);
+
+          if (appAlreadySet) {
+            log(`[STEP4] App "${flowState.appName}" already selected — skipping re-confirm`);
+          } else {
+            log(`[STEP4] Re-confirming App "${flowState.appName}" after smartFiller`);
+            await forceSelectInOffcanvas(page, flowState.appName, 'App re-confirm', true);
+            await page.waitForTimeout(500);
+          }
 
           ok = true;
         } catch (err) {
@@ -1015,20 +1426,22 @@ async function stepCreateTemplate(page, flowState) {
       const dupField = extractDuplicateFieldFromError(err.message);
       
       if (isDuplicate && attempt < 4) {
-        log(`[STEP4] Duplicate detected on field "${dupField || 'unknown'}" (attempt ${attempt + 1}) — will fetch dashboard and retry: ${err.message}`);
-        
-        // On first duplicate, fetch existing values
-        if (attempt === 1) {
+        log(`[STEP4] Duplicate detected on field "${dupField || 'unknown'}" (attempt ${attempt + 1}): ${err.message}`);
+
+        const collidingCode = extractCodeFromError(err.message);
+        if (collidingCode && !existingCodes.includes(collidingCode)) {
+          existingCodes.push(collidingCode);
+          log(`[STEP4] Added "${collidingCode}" to local code blocklist (now ${existingCodes.length} entries)`);
+        }
+
+        if (!dashboardFetched) {
           try {
             await navigateTo(page, '/Create-Template');
             await page.waitForTimeout(1000);
-            const existingNames = await fetchExistingValuesFromDashboard(page, 'Template Name');
-            const existingCodes = await fetchExistingValuesFromDashboard(page, 'Template Code');
-            
-            if (existingNames.length > 0 || existingCodes.length > 0) {
-              stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
-              log(`[STEP4] Generated new stamp based on dashboard values: ${stamp}`);
-            }
+            existingNames = await fetchExistingValuesFromDashboard(page, 'Template Name');
+            existingCodes = await fetchExistingValuesFromDashboard(page, 'Template Code');
+            dashboardFetched = true;
+            log(`[STEP4] Fetched ${existingNames.length} existing names, ${existingCodes.length} existing codes`);
           } catch (err2) {
             log(`[STEP4] Could not fetch dashboard values: ${err2.message}`);
           }
@@ -1044,17 +1457,17 @@ async function stepCreateTemplate(page, flowState) {
 async function stepCreateSubTemplate(page, flowState) {
   log('Step 5: Create Sub-Template');
   if (!flowState.templateName) throw new Error('Cannot create Sub-Template: templateName not set from Step 4');
-  
+
   let stamp = RUN_STAMP;
+  let existingNames = [];
+  let existingCodes = [];
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       if (attempt > 0) {
         log(`[STEP5] Retry attempt ${attempt + 1} for Sub-Template creation`);
         await page.waitForTimeout(2000);
-        if (attempt > 1) {
-          stamp = generateRetryStamp(attempt);
-          log(`[STEP5] Generated new stamp for retry: ${stamp}`);
-        }
+        stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
+        log(`[STEP5] Generated new stamp for retry: ${stamp}`);
         await dismissOverlays(page).catch(() => {});
       }
 
@@ -1068,21 +1481,128 @@ async function stepCreateSubTemplate(page, flowState) {
           if (p !== '/login' && p !== '/home' && p !== '/' && await page.locator('.pageTitle').count().catch(() => 0) > 0) { found = true; break; }
         } catch { /* try next */ }
       }
-      if (!found) { log('Sub-Template page not found – skipping'); return { subTemplateName: '', saveMessage: 'skipped', skipped: true }; }
+      if (!found) { throw new Error('Sub-Template page not found in any of the known routes. This step is mandatory and cannot be skipped.'); }
+
+      // ✅ CRITICAL: Reload page to refresh dropdown caches so newly created template appears in dropdown list
+      log(`[STEP5] Reloading page to refresh dropdown caches and ensure newly-created template is available`);
+      await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+      await page.waitForTimeout(1000);
 
       await openCreateForm(page);
+      
+      // ✅ CRITICAL: Wait for dropdown options to actually populate from server
+      log(`[STEP5] Waiting for dropdown options to populate from server...`);
+      let optionsLoaded = false;
+      let waitAttempts = 0;
+      while (!optionsLoaded && waitAttempts < 15) {
+        waitAttempts++;
+        const hasOptions = await page.evaluate(() => {
+          const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+          if (!oc) return false;
+          const options = Array.from(oc.querySelectorAll('.react-select__option, [role="option"], .select2-results__option'));
+          return options.length > 0;
+        }).catch(() => false);
+        
+        if (hasOptions) {
+          optionsLoaded = true;
+          log(`[STEP5] ✅ Dropdown options loaded (${waitAttempts} checks)`);
+        } else {
+          await page.waitForTimeout(300);
+        }
+      }
+      
+      if (!optionsLoaded) {
+        log(`[STEP5] ⚠️ Dropdown options did not populate. Trying alternative: click first dropdown to trigger data load...`);
+        const inputs = await page.evaluate(() => {
+          const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+          if (!oc) return [];
+          const isVis = (el) => {
+            const s = getComputedStyle(el);
+            return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null && !el.disabled;
+          };
+          const inputs = Array.from(oc.querySelectorAll('input[id*="react-select"], input[role="combobox"], .select2-search__field'));
+          return inputs.filter(isVis).map(el => el.id).slice(0, 1);
+        }).catch(() => []);
+        
+        if (inputs.length > 0) {
+          log(`[STEP5] Clicking first dropdown (${inputs[0]}) to trigger load...`);
+          const triggerInput = page.locator(`input[id="${inputs[0]}"]`).first();
+          await triggerInput.click({ force: true }).catch(() => {});
+          await page.waitForTimeout(1500);
+          // ⚠️ Do NOT press Escape — the OffCanvas listens for Escape globally and will close the whole form
+          // Instead, blur the input or click the offcanvas header to dismiss the dropdown safely
+          await triggerInput.blur().catch(() => {});
+          await page.waitForTimeout(500);
+        }
+      }
+      
       const subName = `AUTO-SUBTPL-${stamp}`;
 
       // ✅ MANDATORY step A: select App FIRST — this populates the Template cascading dropdown
       if (flowState.appName) {
         log(`[STEP5] Selecting App "${flowState.appName}" first (cascading parent for Template)`);
-        await forceSelectInOffcanvas(page, flowState.appName, 'App (cascade parent)', false);
-        await page.waitForTimeout(1500); // wait for Template dropdown to be populated
+        try {
+          await forceSelectInOffcanvas(page, flowState.appName, 'App (cascade parent)', false);
+          log(`[STEP5] ✅ App selected. Waiting for Template dropdown to cascade...`);
+        } catch (err) {
+          log(`[STEP5] ⚠️ App selection error (non-strict, continuing): ${err.message}`);
+          // App not found but continuing anyway since strict=false — don't close the form
+        }
+        log(`[STEP5] Waiting for cascading dropdown to populate with templates...`);
+        await page.waitForTimeout(3500); // increased from 2500 — wait longer for cascade + data load
       }
 
-      // ✅ MANDATORY step B: select Template BEFORE smartFiller
-      log(`[STEP5] Selecting Template "${flowState.templateName}" in Sub-Template form (pre-fill)`);
-      await forceSelectInOffcanvas(page, flowState.templateName, 'Template pre-fill', true);
+      // ✅ MANDATORY step B: select Template BEFORE smartFiller (with retry on cache miss)
+      let templateSelected = false;
+      let templateSelectAttempts = 0;
+      
+      while (!templateSelected && templateSelectAttempts < 2) {
+        try {
+          templateSelectAttempts++;
+          log(`[STEP5] Attempt ${templateSelectAttempts}: Selecting Template "${flowState.templateName}" in Sub-Template form (pre-fill)`);
+          await forceSelectInOffcanvas(page, flowState.templateName, 'Template pre-fill', true);
+          templateSelected = true;
+          log(`[STEP5] ✅ Template "${flowState.templateName}" selected successfully`);
+        } catch (err) {
+          if (templateSelectAttempts >= 2) throw err;
+          log(`[STEP5] Template not found in dropdown (attempt ${templateSelectAttempts}). Reloading page to refresh cache...`);
+          await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+          await page.waitForTimeout(1500);
+          await openCreateForm(page);
+          
+          // Re-wait for dropdown options to populate
+          log(`[STEP5] Waiting for dropdown options to populate after reload...`);
+          let optionsLoaded2 = false;
+          let waitAttempts2 = 0;
+          while (!optionsLoaded2 && waitAttempts2 < 10) {
+            waitAttempts2++;
+            const hasOptions2 = await page.evaluate(() => {
+              const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+              if (!oc) return false;
+              const options = Array.from(oc.querySelectorAll('.react-select__option, [role="option"], .select2-results__option'));
+              return options.length > 0;
+            }).catch(() => false);
+            
+            if (hasOptions2) {
+              optionsLoaded2 = true;
+              log(`[STEP5] ✅ Dropdown options reloaded`);
+            } else {
+              await page.waitForTimeout(300);
+            }
+          }
+          
+          // Re-select App after reload
+          if (flowState.appName) {
+            log(`[STEP5] Re-selecting App "${flowState.appName}" after reload`);
+            try {
+              await forceSelectInOffcanvas(page, flowState.appName, 'App (cascade parent)', false);
+            } catch (err2) {
+              log(`[STEP5] ⚠️ App reselection failed (non-strict): ${err2.message}`);
+            }
+            await page.waitForTimeout(3500);
+          }
+        }
+      }
       await page.waitForTimeout(600);
 
       // SmartFiller fills remaining text fields — may override Template dropdown, corrected after
@@ -1095,10 +1615,22 @@ async function stepCreateSubTemplate(page, flowState) {
         },
       });
 
-      // ✅ MANDATORY step C: re-confirm Template AFTER smartFiller overrides
-      log(`[STEP5] Re-confirming Template "${flowState.templateName}" after smartFiller`);
-      await forceSelectInOffcanvas(page, flowState.templateName, 'Template re-confirm', true);
-      await page.waitForTimeout(500);
+      // Re-confirm Template AFTER smartFiller — only if dropdown lost the value
+      const templateAlreadySet = await page.evaluate((expected) => {
+        const oc = document.querySelector('.offcanvas.show .offcanvas-body, #masterFormOffcanvas.show .offcanvas-body, #offcanvas.show .offcanvas-body');
+        if (!oc) return false;
+        const singleValues = Array.from(oc.querySelectorAll('.react-select__single-value, [class*="singleValue"]'));
+        const exp = String(expected || '').trim().toLowerCase();
+        return singleValues.some(n => (n.textContent || '').trim().toLowerCase() === exp);
+      }, flowState.templateName).catch(() => false);
+
+      if (templateAlreadySet) {
+        log(`[STEP5] Template "${flowState.templateName}" already selected — skipping re-confirm`);
+      } else {
+        log(`[STEP5] Re-confirming Template "${flowState.templateName}" after smartFiller`);
+        await forceSelectInOffcanvas(page, flowState.templateName, 'Template re-confirm', true);
+        await page.waitForTimeout(500);
+      }
 
       const saveMsg = await saveOffcanvas(page);
       log(`Sub-Template save: ${saveMsg}`);
@@ -1110,36 +1642,25 @@ async function stepCreateSubTemplate(page, flowState) {
       const isDuplicate = isDuplicateError(err.message);
       if (isDuplicate && attempt < 4) {
         const dupField = extractDuplicateFieldFromError(err.message);
-        log(`[STEP5] Duplicate detected on field "${dupField || 'unknown'}" (attempt ${attempt + 1}) — will fetch dashboard and retry: ${err.message}`);
-        
-        // On first duplicate, fetch existing values
-        if (attempt === 1) {
-          try {
-            // Try to find the Sub-Template list page
-            for (const route of ['/Create-Sub-Templates', '/Sub-Template', '/Create-Sub-Template']) {
-              try {
-                await page.goto(`${BASE_URL}${route}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-                await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
-                await page.waitForTimeout(1000);
-                const existingNames = await fetchExistingValuesFromDashboard(page, 'Sub Template Name');
-                const existingCodes = await fetchExistingValuesFromDashboard(page, 'Sub-Template Code');
-                
-                if (existingNames.length > 0 || existingCodes.length > 0) {
-                  stamp = generateUniqueValue(generateRetryStamp(attempt), [...existingNames, ...existingCodes], attempt);
-                  log(`[STEP5] Generated new stamp based on dashboard values: ${stamp}`);
-                }
-                break;
-              } catch (err2) {
-                log(`[STEP5] Could not fetch from ${route}: ${err2.message}`);
-              }
+        log(`[STEP5] Duplicate detected on field "${dupField || 'unknown'}" (attempt ${attempt + 1}): ${err.message}`);
+
+        if (existingNames.length === 0 && existingCodes.length === 0) {
+          for (const route of ['/Create-Sub-Templates', '/Sub-Template', '/Create-Sub-Template']) {
+            try {
+              await page.goto(`${BASE_URL}${route}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+              await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+              await page.waitForTimeout(1000);
+              existingNames = await fetchExistingValuesFromDashboard(page, 'Sub Template Name');
+              existingCodes = await fetchExistingValuesFromDashboard(page, 'Sub-Template Code');
+              log(`[STEP5] Fetched ${existingNames.length} existing names, ${existingCodes.length} existing codes from ${route}`);
+              if (existingNames.length > 0 || existingCodes.length > 0) break;
+            } catch (err2) {
+              log(`[STEP5] Could not fetch from ${route}: ${err2.message}`);
             }
-          } catch (err2) {
-            log(`[STEP5] Could not fetch dashboard values: ${err2.message}`);
           }
         }
         
-        // Close the offcanvas before retrying
-        await page.keyboard.press('Escape').catch(() => {});
+        // Close the offcanvas before retrying — use btn-close click, NOT Escape (Escape closes whole form)
         await dismissOverlays(page).catch(() => {});
         await page.locator('.btn-close:visible, [data-bs-dismiss="offcanvas"]:visible').first().click({ force: true }).catch(() => {});
         await page.waitForTimeout(800);
@@ -1147,7 +1668,6 @@ async function stepCreateSubTemplate(page, flowState) {
       }
       // Close the offcanvas before giving up so the next step starts on a clean page
       log(`[STEP5] Error: ${err.message} — dismissing offcanvas before continuing`);
-      await page.keyboard.press('Escape').catch(() => {});
       await dismissOverlays(page).catch(() => {});
       await page.locator('.btn-close:visible, [data-bs-dismiss="offcanvas"]:visible').first().click({ force: true }).catch(() => {});
       await page.waitForTimeout(800);
@@ -1240,9 +1760,8 @@ async function pickDropdownOnPage(page, targetText, hint = '', strict = false) {
       }
     }
 
-    // Close and try next input
-    await page.keyboard.press('Escape').catch(() => {});
-    await page.waitForTimeout(300);
+    // Close and try next input. Do not press Escape; the app has global Escape handlers.
+    await closeOpenDropdown(page, input);
   }
 
   if (strict) throw new Error(`[PAGE-SELECT] Could not find "${targetText}" (${hint}) in any page dropdown`);
@@ -1255,6 +1774,152 @@ async function pickDropdownOnPage(page, targetText, hint = '', strict = false) {
  * Selects a value in the Nth react-select dropdown on the page (0-indexed).
  * Waits up to waitMs for that input to become enabled (for cascading dropdowns).
  */
+async function pickFirstOptionById(page, inputId, hint = '', waitMs = 10000) {
+  log(`[FIRST-OPT] Targeting #${inputId} (first available option, ${hint})`);
+  await page.waitForFunction((id) => {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    if (el.disabled || el.readOnly) return false;
+    const s = getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null;
+  }, inputId, { timeout: waitMs }).catch(() => {});
+
+  const input = page.locator(`input#${inputId}`).first();
+  await input.click({ force: true }).catch(() => {});
+  await page.waitForTimeout(600);
+
+  const allOptions = page.locator('.react-select__option:visible, [role="option"]:visible');
+  const count = await allOptions.count().catch(() => 0);
+  for (let i = 0; i < count; i++) {
+    const opt = allOptions.nth(i);
+    const txt = (await opt.textContent().catch(() => '')).trim();
+    if (!txt || /no options|loading|please\s+select/i.test(txt)) continue;
+    await opt.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(500);
+    log(`[FIRST-OPT] ✅ Picked "${txt}" for ${hint || inputId}`);
+    return txt;
+  }
+  log(`[FIRST-OPT] ⚠️ No options available for #${inputId} (${hint})`);
+  await page.keyboard.press('Escape').catch(() => {});
+  return '';
+}
+
+async function pickDropdownById(page, inputId, targetText, hint = '', waitMs = 10000) {
+  if (!targetText || !String(targetText).trim()) {
+    throw new Error(`[ID-SELECT] Empty targetText for #${inputId} (${hint}) — flowState missing required value. If resuming, pass RESUME_FLOW_STATE with siteName/appName/templateName.`);
+  }
+  log(`[ID-SELECT] Targeting #${inputId} for "${targetText}" (${hint})`);
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const tgtNorm = norm(targetText);
+  let lastOptions = [];
+  let lastNotice = '';
+
+  // Wait for input to exist and be enabled (not disabled / readonly)
+  const inputReady = await page.waitForFunction((id) => {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    if (el.disabled || el.readOnly) return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden') return false;
+    if (el.offsetParent === null) return false;
+    // react-select wraps input in container with aria-disabled when isDisabled
+    const container = el.closest('[class*="control"]');
+    if (container && container.getAttribute('aria-disabled') === 'true') return false;
+    return true;
+  }, inputId, { timeout: waitMs }).then(() => true).catch(() => {
+    log(`[ID-SELECT] ⚠️ Timed out waiting for #${inputId} to be enabled`);
+    return false;
+  });
+  if (!inputReady) {
+    throw new Error(`[ID-SELECT] #${inputId} (${hint}) did not become enabled after ${waitMs}ms. The previous cascade selection likely did not load dependent options.`);
+  }
+
+  const input = page.locator(`input#${inputId}`).first();
+  const allOptions = page.locator('.react-select__option, [role="option"]');
+  const noOptionsMsg = page.locator('.react-select__menu-notice, [class*="menu-notice"]');
+
+  // Up to 4 attempts: open → wait for real options → click match.
+  // Real options must NOT be the "No options" / "Loading" placeholder.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await input.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(500);
+
+    // Wait until at least one real option exists (or menu-notice resolves to actual data)
+    const haveOptions = await page.waitForFunction(() => {
+      const opts = document.querySelectorAll('.react-select__option, [role="option"]');
+      if (opts.length > 0) return true;
+      // If "No options" / "Loading" shown, keep waiting
+      return false;
+    }, null, { timeout: 4000 }).then(() => true).catch(() => false);
+
+    if (!haveOptions) {
+      const snapshot = await getVisibleDropdownSnapshot(page);
+      lastOptions = snapshot.options;
+      lastNotice = snapshot.notices[0] || '';
+      log(`[ID-SELECT] attempt ${attempt + 1}: options not loaded yet, retry`);
+      await closeOpenDropdown(page, input);
+      await page.waitForTimeout(1500);
+      continue;
+    }
+
+    // Type filter
+    await input.fill('').catch(() => {});
+    await input.type(targetText, { delay: 30 }).catch(() => {});
+    await page.waitForTimeout(900);
+    const snapshot = await getVisibleDropdownSnapshot(page);
+    lastOptions = snapshot.options;
+    lastNotice = snapshot.notices[0] || '';
+
+    // If "No options" message appears, options haven't propagated — retry
+    if (await noOptionsMsg.first().isVisible({ timeout: 600 }).catch(() => false)) {
+      log(`[ID-SELECT] attempt ${attempt + 1}: "${lastNotice || 'No options'}" after typing, waiting and retrying`);
+      await closeOpenDropdown(page, input);
+      await page.waitForTimeout(2000);
+      continue;
+    }
+
+    const count = await allOptions.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const opt = allOptions.nth(i);
+      if (!await opt.isVisible().catch(() => false)) continue;
+      const txt = (await opt.textContent().catch(() => '')).trim();
+      if (!txt || /no options|loading/i.test(txt)) continue;
+      if (norm(txt) === tgtNorm) {
+        await opt.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(800);
+        log(`[ID-SELECT] ✅ Exact match for "${hint}": "${txt}"`);
+        return txt;
+      }
+    }
+
+    for (let i = 0; i < count; i++) {
+      const opt = allOptions.nth(i);
+      if (!await opt.isVisible().catch(() => false)) continue;
+      const txt = (await opt.textContent().catch(() => '')).trim();
+      if (!txt || /no options|loading/i.test(txt)) continue;
+      if (tgtNorm.length < 3) continue; // refuse loose match on very short queries
+      if (norm(txt).includes(tgtNorm)) {
+        await opt.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(800);
+        log(`[ID-SELECT] ✅ Partial match for "${hint}": "${txt}"`);
+        return txt;
+      }
+    }
+
+    // No match this attempt — close menu, wait, retry
+    log(`[ID-SELECT] attempt ${attempt + 1}: no matching option found, retrying (visible: ${lastOptions.slice(0, 6).join(', ') || 'none'}${lastNotice ? `; notice: ${lastNotice}` : ''})`);
+    await closeOpenDropdown(page, input);
+    await page.waitForTimeout(2000);
+  }
+
+  await closeOpenDropdown(page, input);
+  const details = [
+    lastOptions.length ? `last visible options: ${lastOptions.slice(0, 8).join(', ')}` : '',
+    lastNotice ? `notice: ${lastNotice}` : '',
+  ].filter(Boolean).join('; ');
+  throw new Error(`[ID-SELECT] Could not select "${targetText}" in #${inputId} (${hint})${details ? `. ${details}` : ''}`);
+}
+
 async function pickNthDropdownOnPage(page, nth, targetText, hint = '', waitMs = 8000) {
   log(`[NTH-SELECT] Targeting dropdown #${nth} for "${targetText}" (${hint})`);
   const norm = (s) => String(s || '').trim().toLowerCase();
@@ -1337,7 +2002,7 @@ async function pickNthDropdownOnPage(page, nth, targetText, hint = '', waitMs = 
     return afterVal;
   }
 
-  await page.keyboard.press('Escape').catch(() => {});
+  await closeOpenDropdown(page, input);
   throw new Error(`[NTH-SELECT] Could not select "${targetText}" in dropdown #${nth} (${hint})`);
 }
 
@@ -1428,25 +2093,28 @@ async function captureWorkflowFieldSnapshot(page) {
 
 async function stepAssignWorkflow(page, flowState) {
   log('Step 6: Template-Workflow page');
+  if (!flowState.siteName || !flowState.appName || !flowState.templateName) {
+    throw new Error(`Step 6 requires siteName + appName + templateName. Got siteName="${flowState.siteName || ''}", appName="${flowState.appName || ''}", templateName="${flowState.templateName || ''}". If resuming, pass RESUME_FLOW_STATE with all three.`);
+  }
   await navigateTo(page, '/Template-Workflow');
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
-  // 6a. Site — always the FIRST (index 0) react-select on the page
+  // 6a. Site — target React-Select by inputId="tw-site-select"
   log(`6a. Select Site: "${flowState.siteName}"`);
-  const siteLabel = await pickNthDropdownOnPage(page, 0, flowState.siteName, 'Site');
+  const siteLabel = await pickDropdownById(page, 'tw-site-select', flowState.siteName, 'Site');
   log(`Site selected: "${siteLabel}"`);
   await page.waitForTimeout(1500); // allow cascading to enable App dropdown
 
-  // 6b. App — SECOND (index 1) react-select, enabled after Site selection
+  // 6b. App — inputId="tw-app-select"
   log(`6b. Select App: "${flowState.appName}"`);
-  const appLabel = await pickNthDropdownOnPage(page, 1, flowState.appName, 'App');
+  const appLabel = await pickDropdownById(page, 'tw-app-select', flowState.appName, 'App');
   log(`App selected: "${appLabel}"`);
-  await page.waitForTimeout(1500); // allow cascading to enable Template dropdown
+  await page.waitForTimeout(2500); // allow cascading + template list fetch
 
-  // 6c. Template — THIRD (index 2) react-select, enabled after App selection
+  // 6c. Template — inputId="tw-template-select" (waits until enabled after App cascade)
   log(`6c. Select Template: "${flowState.templateName}"`);
-  const tplLabel = await pickNthDropdownOnPage(page, 2, flowState.templateName, 'Template');
+  const tplLabel = await pickDropdownById(page, 'tw-template-select', flowState.templateName, 'Template', 15000);
   log(`Template selected: "${tplLabel}"`);
   await page.waitForTimeout(1000);
 
@@ -1455,46 +2123,56 @@ async function stepAssignWorkflow(page, flowState) {
   const addNewBtn = page.locator('button:visible', { hasText: /Add New/i }).first();
   if (!await addNewBtn.isVisible().catch(() => false)) throw new Error('"Add New" button not found');
   await addNewBtn.click({ force: true });
-  const offcanvas = page.locator('#offcanvas.show .offcanvas-body, .offcanvas.show .offcanvas-body').first();
-  await offcanvas.waitFor({ state: 'visible', timeout: 10000 });
+  const offcanvas = page.locator('#offcanvas.show .offcanvas-body, .offcanvas.show .offcanvas-body, .offcanvas.showing .offcanvas-body, [class*="offcanvas"][class*="show"] .offcanvas-body').first();
+  await offcanvas.waitFor({ state: 'visible', timeout: 15000 });
   log('Workflow offcanvas opened');
   await page.waitForTimeout(800);
 
-  // 6e. Level (first dropdown in offcanvas)
-  const levelLabel = await forceSelectInOffcanvas(page, '', 'Level', false);
-  log(`Level: "${levelLabel}"`);
+  // Workflow form field IDs (from WorkflowSidePanel.jsx):
+  //   workflow-level, workflow-name, task_type_1/2/3, is_print_0/1/2,
+  //   workflow-role, workflow-email-template, workflow-esign-meaning, workflow-task-status,
+  //   isConditionWorkflowAvailable radios
 
-  // 6f. Workflow Name and other text fields
   const workflowStamp = uniqueStamp(16);
   const wfName = `AUTO-WF-${workflowStamp}`;
   flowState.workflowName = wfName;
-  const textInputs = offcanvas.locator('input[type="text"]:visible:not([disabled]), input:not([type]):visible:not([disabled])');
-  const inputCount = await textInputs.count().catch(() => 0);
-  for (let i = 0; i < inputCount; i++) {
-    const inp = textInputs.nth(i);
-    const ph = (await inp.getAttribute('placeholder').catch(() => '')) || '';
-    const val = (await inp.inputValue().catch(() => '')) || '';
-    if (val) continue;
-    if (/workflow\s*name/i.test(ph) || i === 0) await inp.fill(wfName).catch(() => {});
-    else if (/esign|signature|meaning/i.test(ph)) await inp.fill(`Signed-${uniqueStamp(12)}`).catch(() => {});
-    else if (/status/i.test(ph)) await inp.fill('Completed').catch(() => {});
-    else await inp.fill(`Auto-${uniqueStamp(12)}`).catch(() => {});
-  }
 
-  // 6g. Task Type = Input Task
-  const taskTypeRadio = page.locator('#task_type_1');
-  if (await taskTypeRadio.isVisible().catch(() => false)) await taskTypeRadio.click({ force: true }).catch(() => {});
+  // 6e. Level — pick first available level
+  const levelLabel = await pickFirstOptionById(page, 'workflow-level', 'Level', 12000);
+  log(`Level: "${levelLabel}"`);
+  await page.waitForTimeout(400);
+
+  // 6f. Workflow Name (always visible, mandatory)
+  const wfNameInput = page.locator('#workflow-name');
+  await wfNameInput.fill('').catch(() => {});
+  await wfNameInput.fill(wfName).catch(() => {});
+  log(`Workflow Name: "${wfName}"`);
+
+  // 6g. Task Type = Input Task (drives showTaskFields)
+  await page.locator('#task_type_1').click({ force: true }).catch(() => {});
+  await page.waitForTimeout(400);
 
   // 6h. Print = None
-  const printRadio = page.locator('#is_print_0');
-  if (await printRadio.isVisible().catch(() => false)) await printRadio.click({ force: true }).catch(() => {});
+  await page.locator('#is_print_0').click({ force: true }).catch(() => {});
+  await page.waitForTimeout(300);
 
-  // 6i. Role (pick first available)
-  const roleLabel = await forceSelectInOffcanvas(page, '', 'Role', false);
+  // 6i. Role — pick first available role
+  const roleLabel = await pickFirstOptionById(page, 'workflow-role', 'Role', 8000);
   log(`Role: "${roleLabel}"`);
+  await page.waitForTimeout(300);
 
-  // 6j. Condition Workflow = No (mandatory radio)
-  const condNoRadio = page.locator('#isConditionWorkflowAvailable_no, input[name="isConditionWorkflowAvailable"][value="no"], input[name="isConditionWorkflowAvailable"][value="0"], input[name*="ConditionWorkflow"][value="no"]').first();
+  // 6j. eSign Meaning + Task Status (text inputs render after task_type chosen; fill if present)
+  const esignInput = page.locator('#workflow-esign-meaning');
+  if (await esignInput.isVisible({ timeout: 800 }).catch(() => false)) {
+    await esignInput.fill(`Signed-${uniqueStamp(10)}`).catch(() => {});
+  }
+  const statusInput = page.locator('#workflow-task-status');
+  if (await statusInput.isVisible({ timeout: 800 }).catch(() => false)) {
+    await statusInput.fill('Completed').catch(() => {});
+  }
+
+  // 6k. Condition Workflow = No (value "2")
+  const condNoRadio = page.locator('input[name="isConditionWorkflowAvailable"][value="2"], #isConditionWorkflowAvailable_no').first();
   if (await condNoRadio.isVisible().catch(() => false)) {
     await condNoRadio.click({ force: true }).catch(() => {});
     log('Condition Workflow = No');
@@ -1819,25 +2497,19 @@ async function run() {
       await updateArtifactOverlay(page, { operation: 'template-workflow', status: 'running', step: 'create-sub-template' });
       try {
         const r = await stepCreateSubTemplate(page, flowState);
-        const verified = r.skipped
-          ? false
-          : await verifyRecentlyCreatedEntry(page, ['/Create-Sub-Templates', '/Sub-Template', '/Create-Sub-Template'], flowState.subTemplateName, 'Sub-Template');
-        const status = r.skipped ? 'skipped' : (stepPass(r.saveMessage, verified) ? 'passed' : 'failed');
-        steps.createSubTemplate = r.skipped
-          ? { status: 'skipped', message: 'Sub-Template page not found' }
-          : {
-            status,
-            message: verified ? r.saveMessage : `Created value was not found in list after save. Save message: ${r.saveMessage}`,
-            subTemplateName: flowState.subTemplateName,
-            verified,
-          };
-        if (!r.skipped && status !== 'passed') throw new Error(`CreateSubTemplate validation failed: ${steps.createSubTemplate.message}`);
+        const verified = await verifyRecentlyCreatedEntry(page, ['/Create-Sub-Templates', '/Sub-Template', '/Create-Sub-Template'], flowState.subTemplateName, 'Sub-Template');
+        const status = stepPass(r.saveMessage, verified) ? 'passed' : 'failed';
+        steps.createSubTemplate = {
+          status,
+          message: verified ? r.saveMessage : `Created value was not found in list after save. Save message: ${r.saveMessage}`,
+          subTemplateName: flowState.subTemplateName,
+          verified,
+        };
+        if (status !== 'passed') throw new Error(`CreateSubTemplate validation failed: ${steps.createSubTemplate.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'createSubTemplate', e.message);
         log(`CreateSubTemplate error: ${e.message}`);
-        // Navigate to a neutral page so Step 6 starts fresh (no leftover offcanvas/state)
-        await page.goto(`${BASE_URL}/Home`, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
-        await page.waitForTimeout(1000);
+        throw e;
       }
     }
 
@@ -1847,9 +2519,11 @@ async function run() {
       try {
         const r = await stepAssignWorkflow(page, flowState);
         steps.assignWorkflow = { status: hasFailureSignal(r.saveMessage) ? 'failed' : (hasSuccessSignal(r.saveMessage) ? 'passed' : 'failed'), message: r.saveMessage, wfName: flowState.workflowName };
+        if (steps.assignWorkflow.status !== 'passed') throw new Error(`AssignWorkflow validation failed: ${steps.assignWorkflow.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'assignWorkflow', e.message);
         log(`AssignWorkflow error: ${e.message}`);
+        throw e;
       }
     }
 
@@ -1859,9 +2533,11 @@ async function run() {
       try {
         const r = await stepSwitchAppUnderSite(page, flowState);
         steps.selectAppUnderSite = { status: r.appClicked ? 'passed' : 'failed', message: r.appClicked ? `Navigated to ${r.finalUrl}` : 'Could not click App on dashboard', url: r.finalUrl };
+        if (steps.selectAppUnderSite.status !== 'passed') throw new Error(`SwitchApp validation failed: ${steps.selectAppUnderSite.message}`);
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'selectAppUnderSite', e.message);
         log(`SwitchApp error: ${e.message}`);
+        throw e;
       }
     }
 
@@ -1884,6 +2560,7 @@ async function run() {
       } catch (e) {
         await markStepFailedWithScreenshot(page, steps, flowState, 'auditTrail', e.message);
         log(`AuditTrail error: ${e.message}`);
+        throw e;
       }
     }
 

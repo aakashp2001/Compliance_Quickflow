@@ -1,0 +1,18 @@
+{
+  "name": "playwright-masters",
+  "version": "1.0.0",
+  "description": "Standalone Playwright tests for all QuickFlow masters",
+  "scripts": {
+    "test": "playwright test --config=playwright.config.js",
+    "test:headed": "playwright test --config=playwright.config.js --headed",
+    "test:report": "playwright show-report playwright-report",
+    "test:interactive": "node interactive-master-test.js",
+    "compliance:pr": "node compliance/performance-reliability-runner.js",
+    "k6:pr01": "k6 run performance/k6/pr-01-load.js",
+    "k6:pr02": "k6 run performance/k6/pr-02-approval.js",
+    "k6:pr03": "k6 run performance/k6/pr-03-stress.js"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.44.0"
+  }
+}
